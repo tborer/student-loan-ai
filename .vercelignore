@@ -1,0 +1,33 @@
+# Deployment artifacts
+build
+.next
+out
+
+# Local environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Dependencies
+node_modules
+
+# Testing
+coverage
+
+# Development
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Old files from migration
+src/
+vite.config.ts
+tsconfig.node.json
