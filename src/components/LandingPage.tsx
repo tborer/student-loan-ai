@@ -8,7 +8,11 @@ type FeatureCardProps = {
   description: string;
 };
 
-const LandingPage: React.FC = () => {
+interface LandingPageProps {
+  onContinue?: () => void;
+}
+
+const LandingPage: React.FC<LandingPageProps> = ({ onContinue }) => {
   const [email, setEmail] = useState<string>('');
 
   const features: FeatureCardProps[] = [
@@ -71,7 +75,13 @@ const LandingPage: React.FC = () => {
             <span id="email-help-text" className="help-text">
               We never store this email with your financial data.
             </span>
-            <button type="submit" disabled className="hero-btn disabled">
+            <button 
+              type="submit" 
+              onClick={onContinue}
+              disabled={!onContinue}
+              className="hero-btn"
+              aria-label="Continue to loan analysis form"
+            >
               Continue to Analysis
             </button>
           </form>
