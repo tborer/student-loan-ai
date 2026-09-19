@@ -112,6 +112,17 @@ export default function ResultsPage() {
           )}
         </header>
 
+        {result && result.notices.length > 0 && (
+          <section className="notices" aria-label="Time-sensitive, applies to everyone">
+            <h2>Before anything else</h2>
+            <ul>
+              {result.notices.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {/*
           Free tier shows headlines only. Exact figures are deliberately not
           rendered here -- keeping them out of the DOM entirely, rather than
@@ -178,6 +189,12 @@ export default function ResultsPage() {
             <p>
               The full report has your estimated new payment, the savings, the trade-offs, and a
               checklist with links to start each option.
+            </p>
+            <p className="what-were-selling">
+              Enrolling in IDR, consolidating, and applying for PSLF are always free directly
+              through studentaid.gov. What you&apos;re paying for here is the comparison across
+              all your options in one place, including real private refinance offers, which
+              studentaid.gov doesn&apos;t provide.
             </p>
 
             <button onClick={handleUnlock} disabled={isProcessing} className="btn-primary">

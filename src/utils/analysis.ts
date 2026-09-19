@@ -38,6 +38,18 @@ export interface RegulatoryConfig {
   pslfRules: { qualifyingPayments: number };
   /** Federal tax treatment of a forgiven balance, keyed by plan/program name, alongside metadata siblings (note, verifyBeforeLaunch). */
   forgivenessTaxTreatment: Record<string, unknown>;
+  timeSensitiveNotices: {
+    autopayDiscount: {
+      standardDiscountPercent: number;
+      boostedDiscountPercent: number;
+      enrollByDate: string;
+      boostExpiresDate: string;
+    };
+    saveTransition: {
+      firstWaveDeadlineExample: string;
+      lastWaveDeadlineExample: string;
+    };
+  };
   idrPlans: Array<{
     name: string;
     status: string;
@@ -116,6 +128,15 @@ export interface AnalysisResult {
   eligibleStrategies: Strategy[];
   ineligibleFor: string[];
   recommendations: string[];
+  /**
+   * Universal, time-sensitive facts unrelated to which strategy the borrower
+   * picks -- the autopay interest-rate discount, the SAVE-plan transition
+   * window. Kept separate from recommendations (which are advice specific to
+   * this borrower's situation) since these apply to nearly every federal
+   * borrower regardless of what else the analysis finds, and belong at the
+   * top of the page rather than mixed into "Worth knowing".
+   */
+  notices: string[];
   /** The standard 10-year payment that savings figures are measured against. */
   baselineMonthlyPayment: number;
   /** Total paid over the standard 10-year baseline -- the reference point for every lifetimeCost.deltaVsBaseline. */
@@ -124,6 +145,16 @@ export interface AnalysisResult {
 
 const STANDARD_TERM_YEARS = 10;
 const STANDARD_TERM_MONTHS = STANDARD_TERM_YEARS * 12;
+
+/** "2026-09-30" -> "September 30, 2026". Dates in config are ISO for sorting/comparison; this is for display. */
+const formatDate = (isoDate: string): string => {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
 
 /** Illustrative refinance rates by credit tier. Refresh from comparison sites. */
 const ILLUSTRATIVE_REFINANCE_RATES: Record<string, number> = {
@@ -399,18 +430,62 @@ export const runAnalysis = (
     eligibleStrategies: [],
     ineligibleFor: [],
     recommendations: [],
+    notices: [],
     baselineMonthlyPayment: Math.round(baselineMonthlyPayment),
     baselineLifetimeCost: Math.round(baselineLifetimeCost),
   };
 
+  // Discharge candidacy is checked first and unconditionally -- including
+  // for a borrower in default, where it matters most: Total and Permanent
+  // Disability Discharge or Closed School Discharge can be the actual way
+  // out of default, not something gated behind resolving it first. A
+  // discharge candidate is never blocked from seeing the four strategies
+  // below the way default is -- an application can take time or be denied,
+  // so the repayment options still have real value in parallel. But a
+  // borrower who might qualify should never see four strategies (or the
+  // single default message below) with nothing pointing at door zero.
+  if (borrower.possibleDischarge) {
+    const { disability, closedSchool, borrowerDefense } = borrower.possibleDischarge;
+    const dischargeMessages: string[] = [];
+    const portalFor = (type: string) => config.federalPortals.find((p) => p.type === type)?.url;
+
+    if (disability) {
+      const url = portalFor('disability_discharge');
+      dischargeMessages.push(
+        `Total and Permanent Disability Discharge can cancel your federal loans outright if you have a qualifying disability.${url ? ` Apply at ${url}.` : ''}`
+      );
+    }
+    if (closedSchool) {
+      const url = portalFor('closed_school_discharge');
+      dischargeMessages.push(
+        `Closed School Discharge can cancel your federal loans if your school closed while you were enrolled, or within 120-180 days after you withdrew.${url ? ` Apply at ${url}.` : ''}`
+      );
+    }
+    if (borrowerDefense) {
+      const url = portalFor('borrower_defense');
+      dischargeMessages.push(
+        `Borrower Defense to Repayment can cancel your federal loans if your school misled you or violated certain laws.${url ? ` Apply at ${url}.` : ''}`
+      );
+    }
+
+    if (dischargeMessages.length > 0) {
+      results.recommendations.unshift(
+        'Before choosing a repayment strategy below, it is worth checking whether you qualify for a discharge program that would cancel the debt outright:',
+        ...dischargeMessages
+      );
+    }
+  }
+
   // A borrower in default is not enrolling in a new IDR plan, not making
   // PSLF-qualifying payments, and unlikely to be approved for private
   // refinancing -- every other recommendation below assumes a premise this
-  // borrower does not have. One clear next step, nothing else, rather than
-  // strategies that would be actively misleading to show as available.
+  // borrower does not have. One clear next step (plus any discharge
+  // messages already queued above), nothing else, rather than strategies
+  // that would be actively misleading to show as available.
   if (borrower.paymentStatus === 'default') {
+    const defaultPortal = config.federalPortals.find((p) => p.type === 'default_rehabilitation');
     results.recommendations.push(
-      'Your loans are in default. This blocks new IDR enrollment, PSLF progress, and most refinancing or consolidation options until it is resolved. The first step is getting out of default -- through loan rehabilitation (an agreement to make a set number of on-time payments) or Direct Consolidation. Start at studentaid.gov/default or by contacting your loan holder. Come back for a full analysis once that is resolved.'
+      `Your loans are in default. This blocks new IDR enrollment, PSLF progress, and most refinancing or consolidation options until it is resolved. The first step is getting out of default -- through loan rehabilitation (an agreement to make a set number of on-time payments) or Direct Consolidation.${defaultPortal ? ` Start at ${defaultPortal.url}` : ' Start at studentaid.gov'} or by contacting your loan holder. Come back for a full analysis once that is resolved.`
     );
     return results;
   }
@@ -428,6 +503,32 @@ export const runAnalysis = (
   const nonDirectFederalLoans = loans.filter((l) => isFederal(l.type) && !isDirect(l.type));
   const parentPlusLoans = loans.filter((l) => isParentPlus(l.type));
   const idrEligibleLoans = loans.filter((l) => isIdrEligibleDirect(l.type));
+
+  // Universal, time-sensitive facts that apply regardless of which strategy
+  // is chosen -- not ranked against the four strategies, shown alongside
+  // them. See docs/counselor-expert-review.md #2.
+  if (hasFederalLoans) {
+    const { autopayDiscount, saveTransition } = config.timeSensitiveNotices;
+    const enrollByDate = new Date(autopayDiscount.enrollByDate);
+    const boostExpiresDate = new Date(autopayDiscount.boostExpiresDate);
+
+    if (today.getTime() <= enrollByDate.getTime()) {
+      results.notices.push(
+        `Enroll in autopay by ${formatDate(autopayDiscount.enrollByDate)} for a temporary ${autopayDiscount.boostedDiscountPercent}% interest-rate discount on Direct Loans first disbursed after July 1, 2012 (up from the usual ${autopayDiscount.standardDiscountPercent}%) -- no eligibility check, no trade-off, and it applies no matter which strategy below you choose. The boosted rate runs through ${formatDate(autopayDiscount.boostExpiresDate)}.`
+      );
+    } else if (today.getTime() <= boostExpiresDate.getTime()) {
+      results.notices.push(
+        `The window to newly enroll for the boosted ${autopayDiscount.boostedDiscountPercent}% autopay discount closed ${formatDate(autopayDiscount.enrollByDate)}. If you were already enrolled, you keep it through ${formatDate(autopayDiscount.boostExpiresDate)}. The standard ${autopayDiscount.standardDiscountPercent}% autopay discount is still available and still free either way.`
+      );
+    }
+
+    const lastPossibleSaveDeadline = new Date(saveTransition.lastWaveDeadlineExample);
+    if (today.getTime() <= lastPossibleSaveDeadline.getTime()) {
+      results.notices.push(
+        `If you're on the SAVE plan, it was vacated by court order: your servicer gives you a 90-day window to choose a new plan once they notify you, or you're moved to Standard Repayment automatically. The first wave's window closed around ${formatDate(saveTransition.firstWaveDeadlineExample)}; later waves run through ${formatDate(saveTransition.lastWaveDeadlineExample)}. Time in SAVE forbearance does not count toward PSLF or IDR forgiveness -- check your studentaid.gov account for your specific deadline.`
+      );
+    }
+  }
 
   // IDR/RAP/PSLF are computed against only the balance actually eligible for
   // them. Folding a Parent PLUS balance into the same figure as a borrower's

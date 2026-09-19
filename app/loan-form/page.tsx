@@ -52,6 +52,9 @@ export default function LoanFormPage() {
   const [creditScoreBand, setCreditScoreBand] = useState<'' | NonNullable<BorrowerInfo['creditScoreBand']>>('');
   const [paymentStatus, setPaymentStatus] =
     useState<BorrowerInfo['paymentStatus']>('current');
+  const [disability, setDisability] = useState(false);
+  const [closedSchool, setClosedSchool] = useState(false);
+  const [borrowerDefense, setBorrowerDefense] = useState(false);
 
   const [errors, setErrors] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -134,6 +137,10 @@ export default function LoanFormPage() {
       yearsInQualifyingRepayment: years === '' ? undefined : Number(years),
       creditScoreBand: creditScoreBand || undefined,
       paymentStatus,
+      possibleDischarge:
+        disability || closedSchool || borrowerDefense
+          ? { disability, closedSchool, borrowerDefense }
+          : undefined,
     };
 
     return { messages, loans: parsedLoans, borrower };
@@ -179,6 +186,14 @@ export default function LoanFormPage() {
           <p className="intro">
             Enter your loan details and borrower information below. We&apos;ll generate a free
             teaser analysis first.
+          </p>
+          <p className="step-zero-note">
+            Not sure of your exact loan types, balances, or servicer? Log in at{' '}
+            <a href="https://studentaid.gov/" target="_blank" rel="noopener noreferrer">
+              studentaid.gov
+            </a>{' '}
+            first to see your official loan details before filling this out — accurate inputs
+            make for an accurate analysis.
           </p>
         </header>
 
@@ -296,6 +311,38 @@ export default function LoanFormPage() {
                 are actually available to you.
               </small>
             </div>
+
+            <fieldset className="form-row discharge-check">
+              <legend>Do any of these apply to you? (check all that apply)</legend>
+              <p className="help-text">
+                These federal programs can cancel your debt outright, which is often worth
+                checking before comparing repayment strategies.
+              </p>
+              <label className="checkbox-option">
+                <input
+                  type="checkbox"
+                  checked={disability}
+                  onChange={(e) => setDisability(e.target.checked)}
+                />
+                I have a permanent disability
+              </label>
+              <label className="checkbox-option">
+                <input
+                  type="checkbox"
+                  checked={closedSchool}
+                  onChange={(e) => setClosedSchool(e.target.checked)}
+                />
+                My school closed while I was enrolled, or shortly after I withdrew
+              </label>
+              <label className="checkbox-option">
+                <input
+                  type="checkbox"
+                  checked={borrowerDefense}
+                  onChange={(e) => setBorrowerDefense(e.target.checked)}
+                />
+                I believe my school misled me or broke certain laws
+              </label>
+            </fieldset>
 
             <div className="form-row">
               <label htmlFor="annualIncome">Annual gross income ($) *</label>

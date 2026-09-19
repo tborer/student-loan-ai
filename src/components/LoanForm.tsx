@@ -42,6 +42,20 @@ export interface BorrowerInfo {
    * someone in default is actively misleading, not just imprecise.
    */
   paymentStatus: 'current' | 'delinquent' | 'default';
+  /**
+   * Self-reported candidacy for a federal discharge program that would
+   * cancel the debt outright rather than just change how it's repaid.
+   * None of these block the four ranked strategies the way default does --
+   * a discharge application can take time or be denied, so seeing repayment
+   * options in parallel has real value -- but a borrower who might qualify
+   * should never see four strategies with nothing pointing at door zero.
+   * See docs/counselor-expert-review.md #3/#7.
+   */
+  possibleDischarge?: {
+    disability?: boolean;
+    closedSchool?: boolean;
+    borrowerDefense?: boolean;
+  };
 }
 
 interface LoanFormProps {
