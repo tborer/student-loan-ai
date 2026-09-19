@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   // <meta name="google-site-verification" ...> instead, which is the
   // equivalent check for a URL-prefix property.
   verification: {
-    google: "JJK6aKpMQ5AtPjltMY2M3KB-UYwHc3N3geJB5ql2uGc",
+    google: "SV56oBxOThPxRrhiJOM54a5rn3uq_z4Zg7hOtFBiGas",
   },
 };
 
