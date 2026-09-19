@@ -24,7 +24,20 @@ export interface RegulatoryConfig {
     paymentPercent: number;
     flatAnnualPayment?: number;
   }>;
-  rapRules: { minMonthlyPayment: number; perDependentMonthlyReduction: number };
+  rapRules: {
+    minMonthlyPayment: number;
+    perDependentMonthlyReduction: number;
+    /**
+     * Separate mechanic from perDependentMonthlyReduction, despite sharing a
+     * dollar amount: RAP credits up to this much monthly principal reduction
+     * even when the payment does not cover it, which is what lets a low RAP
+     * payment amortize instead of growing forever.
+     */
+    principalMatchCap: number;
+  };
+  pslfRules: { qualifyingPayments: number };
+  /** Federal tax treatment of a forgiven balance, keyed by plan/program name, alongside metadata siblings (note, verifyBeforeLaunch). */
+  forgivenessTaxTreatment: Record<string, unknown>;
   idrPlans: Array<{
     name: string;
     status: string;
@@ -32,6 +45,11 @@ export interface RegulatoryConfig {
     discretionaryIncomeMultiplier?: number;
     paymentPercent?: number;
     discretionaryIncomeFormula: boolean;
+    /**
+     * Years until any remaining balance is forgiven. IBR's is disbursement-
+     * date-dependent (old/new); RAP's is a single flat term.
+     */
+    forgivenessTerm: { standard: number; extended: number } | number | null;
   }>;
 }
 
@@ -41,19 +59,43 @@ export interface ProviderConfig {
   federalPortals: Array<{ name: string; url: string; type: string }>;
 }
 
+/**
+ * What a strategy costs over its full term, not just this month.
+ *
+ * This exists because "lower monthly payment" and "costs less" are different
+ * claims -- a payment below the interest accrual can cost far more over the
+ * life of the loan even though it feels cheaper today.
+ */
+export interface LifetimeCost {
+  /** Total dollars paid in, over the term modeled. */
+  totalPaid: number;
+  /** The term actually modeled, in years (may end early on full payoff). */
+  termYears: number;
+  /** True if the balance reached $0 before the term ended -- no forgiveness. */
+  paidOffBeforeTerm: boolean;
+  /** Balance forgiven at term end. Present only when paidOffBeforeTerm is false. */
+  forgivenBalance?: number;
+  /** Whether that forgiven balance is treated as taxable federal income. */
+  forgivenessTaxableFederal?: boolean;
+  /** totalPaid minus the standard-plan baseline's totalPaid. Positive = costs more. */
+  deltaVsBaseline: number;
+}
+
 export interface Strategy {
   id: string;
   title: string;
   /** Estimated monthly payment under this strategy, where one applies. */
   estimatedMonthlyPayment?: number;
   /**
-   * Estimated annual savings against the standard 10-year baseline.
+   * Monthly cash-flow relief vs. the standard 10-year baseline, annualized.
    *
-   * Always an annual dollar figure, so strategies are comparable to each
-   * other. Absent where a strategy has no quantifiable saving (forgiveness,
-   * consolidation) or where we lack an input needed to estimate it.
+   * This is NOT lifetime savings -- a strategy can relieve monthly cash flow
+   * while costing more overall. See lifetimeCost for the total-cost picture,
+   * and lifetimeCost.deltaVsBaseline specifically for whether it actually
+   * saves money.
    */
   estimatedAnnualSavings?: number;
+  lifetimeCost?: LifetimeCost;
   tradeoffs?: string[];
   /** Risks the user must see before acting, not merely trade-offs. */
   warnings?: string[];
@@ -65,9 +107,12 @@ export interface AnalysisResult {
   recommendations: string[];
   /** The standard 10-year payment that savings figures are measured against. */
   baselineMonthlyPayment: number;
+  /** Total paid over the standard 10-year baseline -- the reference point for every lifetimeCost.deltaVsBaseline. */
+  baselineLifetimeCost: number;
 }
 
 const STANDARD_TERM_YEARS = 10;
+const STANDARD_TERM_MONTHS = STANDARD_TERM_YEARS * 12;
 
 /** Illustrative refinance rates by credit tier. Refresh from comparison sites. */
 const ILLUSTRATIVE_REFINANCE_RATES: Record<string, number> = {
@@ -132,6 +177,10 @@ export const calculateIbrPayment = (
 /**
  * RAP does not use discretionary income. It applies a percentage drawn from an
  * AGI bracket table directly against AGI, reduced per dependent, with a floor.
+ *
+ * This is the borrower's monthly bill. It is a different number from the
+ * principal-match mechanic in simulatePayoff below, which affects how fast
+ * the balance shrinks, not what the borrower owes each month.
  */
 export const calculateRapPayment = (
   borrower: BorrowerInfo,
@@ -184,6 +233,123 @@ export const calculateConsolidationRate = (loans: Loan[]): number => {
   return Math.ceil(weighted * 8) / 8;
 };
 
+interface PayoffSimulationResult {
+  totalPaid: number;
+  /** Months actually elapsed, whether by payoff or hitting the term cap. */
+  monthsElapsed: number;
+  /** True if the balance reached $0 before maxMonths. */
+  paidOffBeforeTerm: boolean;
+  /** Remaining balance at maxMonths, when not paid off early. */
+  endingBalance: number;
+}
+
+/**
+ * Simulates a fixed monthly payment against an amortizing balance for up to
+ * maxMonths, under one of two interest-shortfall rules:
+ *
+ *  - 'capitalizing': a payment below the month's interest lets the balance
+ *    grow (unpaid interest capitalizes). This is the IBR/legacy-IDR
+ *    assumption. It is the conservative direction for a tool warning about
+ *    risk: if real-world treatment is actually more forgiving, this
+ *    overstates the cost rather than understating it. VERIFY.
+ *
+ *  - 'rap-assisted': unpaid interest is waived rather than capitalized, and
+ *    the borrower is credited up to principalMatchCap dollars of principal
+ *    reduction each month even when their payment alone would not cover
+ *    that much -- the mechanic that lets a low RAP payment still amortize.
+ *
+ * A constant monthly payment is itself a simplification: real IDR/RAP
+ * payments are recalculated as income and household size change. This models
+ * "if your situation stays the same," which is the only thing a point-in-time
+ * tool can responsibly estimate.
+ */
+export const simulatePayoff = (
+  balance: number,
+  annualRatePercent: number,
+  monthlyPayment: number,
+  maxMonths: number,
+  mode: 'capitalizing' | 'rap-assisted',
+  principalMatchCap = 0
+): PayoffSimulationResult => {
+  const monthlyRate = annualRatePercent / 100 / 12;
+  let remaining = balance;
+  let totalPaid = 0;
+
+  for (let month = 1; month <= maxMonths; month++) {
+    const interest = remaining * monthlyRate;
+
+    if (mode === 'rap-assisted') {
+      const principalFromPayment = Math.max(0, monthlyPayment - interest);
+      const principalReduction = Math.max(principalFromPayment, principalMatchCap);
+
+      if (principalReduction >= remaining) {
+        // Final month: don't count more than what was owed.
+        totalPaid += interest + remaining;
+        return { totalPaid, monthsElapsed: month, paidOffBeforeTerm: true, endingBalance: 0 };
+      }
+      remaining -= principalReduction;
+      totalPaid += monthlyPayment;
+    } else {
+      if (monthlyPayment >= interest + remaining) {
+        totalPaid += interest + remaining;
+        return { totalPaid, monthsElapsed: month, paidOffBeforeTerm: true, endingBalance: 0 };
+      }
+      remaining = remaining + interest - monthlyPayment;
+      totalPaid += monthlyPayment;
+    }
+  }
+
+  return {
+    totalPaid,
+    monthsElapsed: maxMonths,
+    paidOffBeforeTerm: false,
+    endingBalance: Math.max(0, remaining),
+  };
+};
+
+/** IBR's term is disbursement-date-dependent; extended (25yr/15%) is used until that date is collected -- see docs/engine-rules-gap-analysis.md #2.1. */
+const resolveForgivenessTermYears = (
+  term: RegulatoryConfig['idrPlans'][number]['forgivenessTerm']
+): number => {
+  if (typeof term === 'number') return term;
+  if (term && typeof term === 'object') return term.extended;
+  return STANDARD_TERM_YEARS;
+};
+
+const buildLifetimeCost = (
+  simulation: PayoffSimulationResult,
+  termYears: number,
+  baselineTotalPaid: number,
+  taxableFederal?: boolean
+): LifetimeCost => ({
+  totalPaid: Math.round(simulation.totalPaid),
+  termYears,
+  paidOffBeforeTerm: simulation.paidOffBeforeTerm,
+  ...(simulation.paidOffBeforeTerm
+    ? {}
+    : {
+        forgivenBalance: Math.round(simulation.endingBalance),
+        forgivenessTaxableFederal: taxableFederal,
+      }),
+  deltaVsBaseline: Math.round(simulation.totalPaid - baselineTotalPaid),
+});
+
+/** A plain-language line for the lifetime-cost delta, so it can't be silently dropped from the UI later. */
+const lifetimeCostWarning = (lifetimeCost: LifetimeCost): string | null => {
+  if (lifetimeCost.deltaVsBaseline <= 0) return null;
+  const extra = lifetimeCost.deltaVsBaseline.toLocaleString('en-US');
+  return `Lower monthly payment, but an estimated $${extra} more paid over ${lifetimeCost.termYears} years than the standard 10-year plan.`;
+};
+
+const forgivenessWarning = (lifetimeCost: LifetimeCost): string | null => {
+  if (lifetimeCost.paidOffBeforeTerm || lifetimeCost.forgivenBalance === undefined) return null;
+  const amount = lifetimeCost.forgivenBalance.toLocaleString('en-US');
+  if (lifetimeCost.forgivenessTaxableFederal) {
+    return `An estimated $${amount} would be forgiven after ${lifetimeCost.termYears} years, and under current federal rules that amount is added to your taxable income in the year it's forgiven. Consult a tax professional before relying on this plan for forgiveness.`;
+  }
+  return `An estimated $${amount} would be forgiven after ${lifetimeCost.termYears} years, tax-free under current federal rules.`;
+};
+
 /**
  * Run the analysis engine against loan and borrower data.
  *
@@ -203,12 +369,14 @@ export const runAnalysis = (
       : 0;
 
   const baselineMonthlyPayment = standardMonthlyPayment(totalBalance, weightedAverageRate);
+  const baselineLifetimeCost = baselineMonthlyPayment * STANDARD_TERM_MONTHS;
 
   const results: AnalysisResult = {
     eligibleStrategies: [],
     ineligibleFor: [],
     recommendations: [],
     baselineMonthlyPayment: Math.round(baselineMonthlyPayment),
+    baselineLifetimeCost: Math.round(baselineLifetimeCost),
   };
 
   // Loan classification. Federal and Direct are distinct: FFEL and Perkins are
@@ -224,7 +392,10 @@ export const runAnalysis = (
   const pastConsolidationDeadline = today.getTime() > consolidationDeadline.getTime();
 
   // Strategy A: Refinance. Applies to any loan type; the federal warning is
-  // mandatory whenever the borrower holds federal debt.
+  // mandatory whenever the borrower holds federal debt. A refinance at a rate
+  // that covers its own interest always fully amortizes over the term by
+  // construction, so its lifetime cost is just monthly x term -- no
+  // simulation needed, and there is never a forgiven-balance/tax question.
   const refinanceSavings = calculateRefinanceSavings(
     totalBalance,
     weightedAverageRate,
@@ -238,13 +409,18 @@ export const runAnalysis = (
   };
 
   if (refinanceSavings !== null) {
+    const targetRate = ILLUSTRATIVE_REFINANCE_RATES[borrower.creditScoreBand as string];
+    const refinancedMonthly = standardMonthlyPayment(totalBalance, targetRate);
+    const refinancedTotal = refinancedMonthly * STANDARD_TERM_MONTHS;
+
     refinance.estimatedAnnualSavings = refinanceSavings;
-    refinance.estimatedMonthlyPayment = Math.round(
-      standardMonthlyPayment(
-        totalBalance,
-        ILLUSTRATIVE_REFINANCE_RATES[borrower.creditScoreBand as string]
-      )
-    );
+    refinance.estimatedMonthlyPayment = Math.round(refinancedMonthly);
+    refinance.lifetimeCost = {
+      totalPaid: Math.round(refinancedTotal),
+      termYears: STANDARD_TERM_YEARS,
+      paidOffBeforeTerm: true,
+      deltaVsBaseline: Math.round(refinancedTotal - baselineLifetimeCost),
+    };
   } else if (!borrower.creditScoreBand) {
     refinance.tradeoffs?.push('Add a credit score band for a sharper rate estimate');
   }
@@ -263,40 +439,69 @@ export const runAnalysis = (
     results.eligibleStrategies.push(refinance);
   }
 
-  // Strategy B: Income-driven repayment. Direct loans only.
+  // Strategy B: Income-driven repayment. Direct loans only. Also feeds PSLF
+  // below, which forgives at 120 payments under whichever qualifying IDR plan
+  // the borrower would actually use.
   const activeIdrPlans = config.idrPlans.filter((plan) => plan.status === 'active');
+  let cheapestIdrForPslf: { monthly: number; mode: 'capitalizing' | 'rap-assisted' } | null = null;
 
   if (hasDirectLoans) {
     for (const plan of activeIdrPlans) {
-      const monthly =
-        plan.name === 'RAP'
-          ? calculateRapPayment(borrower, config)
-          : calculateIbrPayment(borrower, plan, config);
+      const isRap = plan.name === 'RAP';
+      const monthly = isRap
+        ? calculateRapPayment(borrower, config)
+        : calculateIbrPayment(borrower, plan, config);
 
-      const strategy: Strategy = {
+      const termYears = resolveForgivenessTermYears(plan.forgivenessTerm);
+      const simulation = simulatePayoff(
+        totalBalance,
+        weightedAverageRate,
+        monthly,
+        termYears * 12,
+        isRap ? 'rap-assisted' : 'capitalizing',
+        isRap ? config.rapRules.principalMatchCap : 0
+      );
+      const taxableFederal = (
+        config.forgivenessTaxTreatment[plan.name] as { taxableFederal?: boolean } | undefined
+      )?.taxableFederal;
+      const lifetimeCost = buildLifetimeCost(
+        simulation,
+        termYears,
+        baselineLifetimeCost,
+        taxableFederal
+      );
+
+      if (!cheapestIdrForPslf || monthly < cheapestIdrForPslf.monthly) {
+        cheapestIdrForPslf = { monthly, mode: isRap ? 'rap-assisted' : 'capitalizing' };
+      }
+
+      const tradeoffs = isRap
+        ? [
+            'Payment set by an AGI bracket, reduced per dependent',
+            'Unpaid interest is waived and principal is matched up to $50/month, so the balance still amortizes',
+            'New plan, effective July 1, 2026',
+          ]
+        : [
+            'Payment set by discretionary income',
+            'The only IDR plan with permanent statutory status',
+          ];
+
+      const warnings = [lifetimeCostWarning(lifetimeCost), forgivenessWarning(lifetimeCost)].filter(
+        (w): w is string => w !== null
+      );
+
+      results.eligibleStrategies.push({
         id: `idr_${plan.name.toLowerCase()}`,
         title: `Income-Driven Repayment (${plan.name})`,
         estimatedMonthlyPayment: Math.round(monthly),
-        estimatedAnnualSavings: Math.max(
-          0,
-          Math.round((baselineMonthlyPayment - monthly) * 12)
-        ),
-        tradeoffs:
-          plan.name === 'RAP'
-            ? [
-                'Payment set by an AGI bracket, reduced per dependent',
-                'Unpaid interest is waived rather than capitalized',
-                'New plan, effective July 1, 2026',
-              ]
-            : [
-                'Payment set by discretionary income',
-                'Remaining balance forgiven after the plan term (20-25 years)',
-                'The only IDR plan with permanent statutory status',
-              ],
-      };
-
-      results.eligibleStrategies.push(strategy);
+        estimatedAnnualSavings: Math.max(0, Math.round((baselineMonthlyPayment - monthly) * 12)),
+        lifetimeCost,
+        tradeoffs,
+        ...(warnings.length > 0 ? { warnings } : {}),
+      });
     }
+  } else {
+    results.recommendations.push('Consolidate FFEL/Perkins loans to access federal IDR plans');
   }
 
   // Strategy C: Consolidation, and the eligibility consequences of the
@@ -332,6 +537,7 @@ export const runAnalysis = (
         ],
         warnings: [
           `Consolidating your ${affected} loans into a Direct Consolidation Loan is a prerequisite for IDR and PSLF, and the deadline to do so while preserving that eligibility is ${config.consolidationDeadline.historicalDeadline}.`,
+          'Consolidation produces a weighted average of any PSLF qualifying-payment counts on the loans involved -- it does not preserve the highest count. Confirm your counts on studentaid.gov before consolidating if you are close to 120 payments.',
         ],
       });
 
@@ -341,15 +547,16 @@ export const runAnalysis = (
     }
   }
 
-  // Strategy D: PSLF. Direct loans plus qualifying employment.
-  const pslfEligibleEmployment =
-    borrower.employmentSector === 'Nonprofit/Government (PSLF)';
+  // Strategy D: PSLF. Direct loans plus qualifying employment. Forgiveness is
+  // modeled at 120 payments under whichever active IDR plan gives the
+  // borrower the lowest qualifying payment, since that is the rational choice
+  // and PSLF itself does not set the payment amount.
+  const pslfEligibleEmployment = borrower.employmentSector === 'Nonprofit/Government (PSLF)';
 
   if (pslfEligibleEmployment && hasDirectLoans) {
     const tradeoffs = [
       'Requires a qualifying nonprofit or government employer',
-      'Requires 120 qualifying payments while on a qualifying plan',
-      'Forgiven balance is not treated as taxable income',
+      'Requires 120 qualifying payments while on a qualifying repayment plan',
     ];
 
     if (borrower.yearsInQualifyingRepayment !== undefined) {
@@ -359,19 +566,53 @@ export const runAnalysis = (
       );
     }
 
-    results.eligibleStrategies.push({
-      id: 'pslf',
-      title: 'Public Service Loan Forgiveness (PSLF)',
-      tradeoffs,
-    });
+    const strategy: Strategy = { id: 'pslf', title: 'Public Service Loan Forgiveness (PSLF)', tradeoffs };
+
+    if (cheapestIdrForPslf) {
+      const pslfTermYears = config.pslfRules.qualifyingPayments / 12;
+      const simulation = simulatePayoff(
+        totalBalance,
+        weightedAverageRate,
+        cheapestIdrForPslf.monthly,
+        config.pslfRules.qualifyingPayments,
+        cheapestIdrForPslf.mode,
+        cheapestIdrForPslf.mode === 'rap-assisted' ? config.rapRules.principalMatchCap : 0
+      );
+      const lifetimeCost = buildLifetimeCost(
+        simulation,
+        pslfTermYears,
+        baselineLifetimeCost,
+        (config.forgivenessTaxTreatment.PSLF as { taxableFederal?: boolean } | undefined)
+          ?.taxableFederal
+      );
+
+      strategy.estimatedMonthlyPayment = Math.round(cheapestIdrForPslf.monthly);
+      strategy.lifetimeCost = lifetimeCost;
+
+      const forgiveWarning = forgivenessWarning(lifetimeCost);
+      if (forgiveWarning) strategy.warnings = [forgiveWarning];
+      else if (!lifetimeCost.paidOffBeforeTerm) {
+        // paidOffBeforeTerm is false but no forgivenBalance is a state that
+        // should not occur; leaving this branch out rather than silently
+        // asserting a number we have not actually computed.
+      } else {
+        tradeoffs.push('Your estimated balance would be paid off before reaching forgiveness');
+      }
+    }
+
+    results.eligibleStrategies.push(strategy);
   } else if (pslfEligibleEmployment && !hasDirectLoans && hasFederalLoans) {
     results.recommendations.push(
       'PSLF requires Direct loans. Your federal loans would need to be consolidated into a Direct Consolidation Loan to qualify.'
     );
   }
 
-  // Ranking: by annual dollar impact, with strategies that have no
-  // quantifiable saving (forgiveness, consolidation) after those that do.
+  // Ranking: by monthly cash-flow relief, with strategies that have no
+  // quantifiable relief (e.g. consolidation) after those that do. This is a
+  // ranking by relief, not by total cost -- a strategy can rank highly here
+  // and still carry a lifetimeCostWarning. That tension is deliberate: both
+  // numbers are real, and burying either one would be its own kind of
+  // misleading.
   results.eligibleStrategies.sort((a, b) => {
     const aHas = a.estimatedAnnualSavings !== undefined;
     const bHas = b.estimatedAnnualSavings !== undefined;
