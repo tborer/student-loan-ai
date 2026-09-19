@@ -58,24 +58,24 @@ export default function ResultsPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID,
-          loanAnalysisData: { /* analysis data */ },
-        }),
+        // The price lives in server env, not here: a client-supplied price
+        // could be swapped for any other price in the Stripe account.
+        body: JSON.stringify({ sessionToken }),
       });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to create checkout session');
+      // An error response is not guaranteed to be JSON (a 500 can be HTML).
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.url) {
+        throw new Error(result?.error || 'Failed to create checkout session');
       }
 
       // Redirect to Stripe Checkout
-      const result = await response.json();
       window.location.href = result.url;
 
     } catch (err) {
       console.error(err);
-      setError('An error occurred. Please try again.');
+      setError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -146,7 +146,7 @@ export default function ResultsPage() {
           ) : (
             <button 
               onClick={handleUnlock} 
-              disabled={isProcessing || !process.env.NEXT_PUBLIC_STRIPE_PRICE_ID}
+              disabled={isProcessing}
               className="btn-primary"
             >
               {isProcessing ? 'Processing...' : 'Unlock Full Report ($9-$19)'}
