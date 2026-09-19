@@ -3,11 +3,20 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+// Define Loan type explicitly to avoid TypeScript errors
+interface Loan {
+  id: number;
+  type: string;
+  balance: number;
+  interestRate: number;
+  servicer?: string;
+}
+
 export default function LoanFormPage() {
   const router = useRouter();
   
-  // Form state
-  const [loans, setLoans] = useState([]);
+  // Form state with proper typing
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [error, setError] = useState<string | null>(null);
   
   // Mock analysis result (in production, this would call the backend)
@@ -46,7 +55,17 @@ export default function LoanFormPage() {
         {/* Loan Add Section */}
         <section className="add-loan">
           <h2>Add Loans</h2>
-          <button onClick={() => setLoans([...loans, { id: Date.now(), type: '', balance: 0, interestRate: 0 }])}>
+          <button 
+            onClick={() => {
+              const newLoan: Loan = { 
+                id: Date.now(), 
+                type: '', 
+                balance: 0, 
+                interestRate: 0 
+              };
+              setLoans([...loans, newLoan]);
+            }}
+          >
             + Add Another Loan
           </button>
         </section>
@@ -68,7 +87,7 @@ export default function LoanFormPage() {
                     const updatedLoans = [...loans];
                     updatedLoans[updatedLoans.indexOf(loan)] = {
                       ...loan,
-                      type: e.target.value as any,
+                      type: e.target.value as string,
                     };
                     setLoans(updatedLoans);
                   }}
