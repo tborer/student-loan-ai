@@ -1,0 +1,84 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-09-19T00:00:00Z",
+  
+  "refinanceLenders": [
+    {
+      "name": "Better.com",
+      "url": "https://www.better.com/refinance",
+      "affiliate": false,
+      "states": ["all"],
+      "creditTierMin": "<650"
+    },
+    {
+      "name": "Rocket Mortgage",
+      "url": "https://www.rocketmortgage.com/loan/student-loan-refinance",
+      "affiliate": true,
+      "disclosure": "We may receive a commission if you apply through this link.",
+      "states": ["all"],
+      "creditTierMin": "<650"
+    },
+    {
+      "name": "SoFi",
+      "url": "https://www.sofi.com/refinance-student-loans/",
+      "affiliate": false,
+      "states": ["all"],
+      "creditTierMin": "700-749"
+    },
+    {
+      "name": "Avant",
+      "url": "https://www.avant.com/student-loan-refinance/",
+      "affiliate": true,
+      "disclosure": "We may receive a commission if you apply through this link.",
+      "states": ["all"],
+      "creditTierMin": "<650"
+    }
+  ],
+
+  "comparisonSites": [
+    {
+      "name": "NerdWallet Student Loan Refinance",
+      "url": "https://www.nerdwallet.com/student-loan-refinance",
+      "affiliate": true,
+      "disclosure": "We may receive a commission if you apply through this link.",
+      "states": ["all"]
+    },
+    {
+      "name": "Bankrate Student Loan Refinance",
+      "url": "https://www.bankrate.com/student-loans/refinance/",
+      "affiliate": true,
+      "disclosure": "We may receive a commission if you apply through this link.",
+      "states": ["all"]
+    }
+  ],
+
+  "federalPortals": [
+    {
+      "name": "IDR Application (studentaid.gov)",
+      "url": "https://studentaid.gov/help-center/html/apply/idr-ibr",
+      "affiliate": false,
+      "type": "federal_idr"
+    },
+    {
+      "name": "Loan Consolidation (studentaid.gov)",
+      "url": "https://studentaid.gov/manage-loans/consolidate",
+      "affiliate": false,
+      "type": "consolidation"
+    },
+    {
+      "name": "PSLF Help Tool",
+      "url": "https://studentaid.gov/pslf/help-tool",
+      "affiliate": false,
+      "type": "pslf"
+    }
+  ],
+
+  "statePrograms": {
+    "note": "Some forgiveness programs are state-specific. Add here as discovered.",
+    "exampleFormat": {
+      "state": "CA",
+      "programName": "California Student Aid Commission Forgiveness",
+      "url": "https://www.calstateaid.org/"
+    }
+  }
+}

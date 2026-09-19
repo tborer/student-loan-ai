@@ -1,0 +1,60 @@
+/* Student Loan Repayment Analyzer — Legal Document Styles */
+
+.legal-document {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: var(--spacing-xl) 0;
+}
+
+.legal-document header {
+  text-align: center;
+  margin-bottom: var(--spacing-xl);
+}
+
+.legal-document h1 {
+  font-size: 2rem;
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.last-updated {
+  font-size: 0.875rem;
+  color: var(--color-text-light);
+}
+
+.legal-document h2 {
+  font-size: 1.25rem;
+  margin-top: var(--spacing-lg);
+  margin-bottom: var(--spacing-sm);
+}
+
+.subheading {
+  font-size: 1rem;
+  color: var(--color-primary);
+  margin-top: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.legal-document ul {
+  padding-left: var(--spacing-lg);
+}
+
+.legal-document li {
+  margin-bottom: var(--spacing-xs);
+  line-height: 1.6;
+}
+
+.legal-footer {
+  margin-top: var(--spacing-xl);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--color-text-light);
+}
+
+/* Accessibility */
+.legal-document {
+  line-height: 1.8;
+  font-size: 1rem;
+}

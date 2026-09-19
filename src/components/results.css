@@ -1,0 +1,173 @@
+/* Student Loan Repayment Analyzer — Results View Styles */
+
+.results-container {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: var(--spacing-xl) 0;
+}
+
+.results-container h1 {
+  text-align: center;
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  margin-bottom: var(--spacing-lg);
+  color: var(--color-text);
+}
+
+.teaser-results {
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-lg);
+}
+
+.strategies-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--spacing-md) 0;
+}
+
+.strategy-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: white;
+  border-radius: var(--border-radius);
+  margin-bottom: var(--spacing-sm);
+  font-size: 0.9rem;
+}
+
+.strategy-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--color-primary);
+  color: white;
+  border-radius: 50%;
+  font-size: 0.875rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.strategy-item span:last-child {
+  flex: 1;
+}
+
+.savings-estimate {
+  text-align: center;
+  padding: var(--spacing-md);
+  background: var(--color-bg);
+  border-radius: var(--border-radius);
+  margin-bottom: var(--spacing-lg);
+  font-size: 0.875rem;
+}
+
+.savings-estimate .label {
+  font-weight: 600;
+}
+
+.savings-estimate .disclaimer {
+  display: block;
+  color: var(--color-text-light);
+  font-size: 0.75rem;
+}
+
+.lock-cta {
+  text-align: center;
+  background: linear-gradient(135deg, #fef3c7 0%, #fef2f2 100%);
+  padding: var(--spacing-lg);
+  border-radius: var(--border-radius);
+  border: 1px solid #fed7aa;
+}
+
+.lock-cta h2 {
+  font-size: 1.1rem;
+  margin-bottom: var(--spacing-sm);
+}
+
+.lock-cta .instruction {
+  font-size: 0.875rem;
+  color: var(--color-text-light);
+  margin-bottom: var(--spacing-md);
+}
+
+.unlock-btn {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  color: white;
+  padding: var(--spacing-sm) var(--spacing-xl);
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: var(--border-radius);
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.unlock-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.lock-cta .blur-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.blur-card {
+  background: #e5e7eb;
+  padding: var(--spacing-md);
+  border-radius: var(--border-radius);
+  text-align: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.blur-card .icon {
+  font-size: 1.5rem;
+}
+
+@media (max-width: 480px) {
+  .blur-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .strategy-item {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+}
+
+/* Locked content styling */
+.locked-content {
+  position: relative;
+  overflow: hidden;
+  min-height: 100px;
+  background: #f3f4f6;
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+}
+
+.locked-content::before {
+  content: '🔒';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2rem;
+  opacity: 0.3;
+}
+
+.locked-content .placeholder-text {
+  position: relative;
+  z-index: 1;
+  color: #9ca3af;
+  text-align: center;
+}

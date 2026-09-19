@@ -1,0 +1,89 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-09-19T00:00:00Z",
+  "updateFrequency": "monthly",
+  "notes": "Config-driven regulatory tables per spec requirement. Update when rules change.",
+
+  "repaymentPlans": {
+    "SAVE": {
+      "status": "vacated",
+      "vacatedDate": "2026-03-10",
+      "effectiveFor": null,
+      "notes": "Court order vacated. Affected borrowers must pick new plan by 2026-09-30."
+    },
+    "IBR": {
+      "status": "active",
+      "disbursementDateLimit": "2026-07-01",
+      "note": "Only IDR plan with permanent status. Partial-financial-hardship requirement removed."
+    },
+    "RAP": {
+      "status": "active",
+      "effectiveDate": "2026-07-01",
+      "paymentStructure": "bracket-based",
+      "agilPercentRange": [1, 10]
+    },
+    "PAYE": {
+      "status": "closed_to_new",
+      "effectiveDate": "2026-07-01",
+      "sunsetDate": "2028-07-01"
+    },
+    "ICR": {
+      "status": "closed_to_new",
+      "effectiveDate": "2026-07-01",
+      "sunsetDate": "2028-07-01"
+    },
+    "tieredStandard": {
+      "status": "active",
+      "terms": [10, 15, 20, 25]
+    }
+  },
+
+  "consolidationDeadline": {
+    "historicalDeadline": "2026-06-30",
+    "note": "Deadline to consolidate FFEL/Perkins/Parent PLUS while preserving IDR/PSLF eligibility. Past this date, those loans permanently lose IDR/PSLF eligibility.",
+    "currentStatus": "past_deadline"
+  },
+
+  "pslfRules": {
+    "qualifiedEmployers": ["nonprofit", "government"],
+    "qualifyingPlanRequirements": ["IBR", "RAP", "PAYE", "ICR", "SAVE (if active)"],
+    "substantialIllegalPurposeRule": {
+      "effectiveDate": "2026-07-01",
+      "notes": "Excludes employers found to have substantial illegal purpose. Applied prospectively only."
+    }
+  },
+
+  "federalfPovertyGuidelines": {
+    "2025": {
+      "single": { "individual": 16940, "sfi": 24387, "mfj": 20828 },
+      "size_2": { "fpg": 20608 }
+    }
+  },
+
+  "rapBrackets": [
+    { "agiPercentMin": 1.0, "agiPercentMax": 2.99, "paymentPercent": 1.5 },
+    { "agiPercentMin": 3.0, "agiPercentMax": 4.99, "paymentPercent": 2.0 },
+    { "agiPercentMin": 5.0, "agiPercentMax": 6.99, "paymentPercent": 3.5 },
+    { "agiPercentMin": 7.0, "agiPercentMax": 8.99, "paymentPercent": 4.5 },
+    { "agiPercentMin": 9.0, "agiPercentMax": 10.0, "paymentPercent": 7.0 }
+  ],
+
+  "idrPlans": [
+    {
+      "name": "IBR",
+      "planMinPayment": 25.0,
+      "forgivenessTerm": {
+        "standard": 20,
+        "extended": 25
+      },
+      "discretionaryIncomeFormula": true
+    },
+    {
+      "name": "RAP",
+      "planMinPayment": 10.0,
+      "forgivenessTerm": null,
+      "discretionaryIncomeFormula": false,
+      "note": "Uses AGI-based bracket lookup instead"
+    }
+  ]
+}

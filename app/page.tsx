@@ -1,0 +1,105 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+export default function Home() {
+  const router = useRouter();
+  const [email, setEmail] = useState<string>('');
+
+  return (
+    <main className="home">
+      {/* Hero Section */}
+      <section className="hero" aria-labelledby="hero-heading">
+        <div className="container">
+          <h1 id="hero-heading">Find Ways to Lower Your Student Loan Payments</h1>
+          <p className="subtitle">
+            Get a personalized analysis of refinancing, income-driven repayment, 
+            consolidation, and PSLF options in minutes. Free teaser results — 
+            unlock your detailed plan with one-time payment.
+          </p>
+          
+          {/* Optional email signup for report recovery */}
+          <form 
+            className="email-signup"
+            onSubmit={(e) => { e.preventDefault(); console.log('Signup:', email); }}
+            aria-label="Optional email signup for report recovery"
+          >
+            <input
+              type="email"
+              placeholder="Enter your email (optional, for report recovery)"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              aria-describedby="signup-help"
+            />
+            <span id="signup-help" className="help-text">
+              We never store this email with your financial data.
+            </span>
+            <button 
+              type="submit" 
+              onClick={() => router.push('/loan-form')}
+              disabled={!email}
+              className="btn-continue"
+            >
+              Continue to Analysis
+            </button>
+          </form>
+        </div>
+      </section>
+
+      {/* Features Grid */}
+      <section className="features" aria-labelledby="features-heading">
+        <div className="container">
+          <h2 id="features-heading">Why Choose Our Analyzer</h2>
+          <div className="features-grid">
+            <article className="feature-card">
+              <span aria-hidden="true">📊</span>
+              <h3>Compare Your Options</h3>
+              <p>Analyze refinancing, income-driven repayment, consolidation, and PSLF to find ways to lower your payments.</p>
+            </article>
+
+            <article className="feature-card">
+              <span aria-hidden="true">🔒</span>
+              <h3>Privacy-First Approach</h3>
+              <p>Your financial data never touches our servers. Everything processed securely and expires automatically.</p>
+            </article>
+
+            <article className="feature-card">
+              <span aria-hidden="true">💰</span>
+              <h3>Transparent Pricing</h3>
+              <p>One-time fee for your analysis — no subscriptions, no hidden costs.</p>
+            </article>
+
+            <article className="feature-card">
+              <span aria-hidden="true">🎯</span>
+              <h3>Actionable Results</h3>
+              <p>Get specific numbers and direct links to start each repayment strategy.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="cta" aria-labelledby="cta-heading">
+        <div className="container">
+          <h2 id="cta-heading">Ready to See Your Options?</h2>
+          <p>Start with our free analysis and unlock your detailed plan when you&apos;re ready.</p>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="footer" role="contentinfo">
+        <nav aria-label="Footer navigation">
+          <a href="/about">About</a>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/contact">Contact</a>
+        </nav>
+        <p className="disclaimer">
+          Educational tool only. Not financial, legal, or tax advice. Consult a qualified advisor before making decisions.
+        </p>
+        <p>&copy; {new Date().getFullYear()} Student Loan Repayment Analyzer</p>
+      </footer>
+    </main>
+  );
+}
