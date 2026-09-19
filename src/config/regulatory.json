@@ -47,6 +47,7 @@
   "pslfRules": {
     "qualifiedEmployers": ["nonprofit", "government"],
     "qualifyingPlanRequirements": ["IBR", "RAP", "PAYE", "ICR", "SAVE (if active)"],
+    "qualifyingPayments": 120,
     "substantialIllegalPurposeRule": {
       "effectiveDate": "2026-07-01",
       "notes": "Excludes employers found to have substantial illegal purpose. Applied prospectively only."
@@ -80,7 +81,16 @@
     "minMonthlyPayment": 10,
     "perDependentMonthlyReduction": 50,
     "unpaidInterestWaived": true,
-    "note": "11 brackets stepping 1%-10% of AGI, one point per $10k, capped above $100k. Sourced from secondary reporting on P.L. 119-21; VERIFY against the statute before launch.",
+    "principalMatchCap": 50,
+    "note": "11 brackets stepping 1%-10% of AGI, one point per $10k, capped above $100k. perDependentMonthlyReduction lowers the bill itself; principalMatchCap is a separate mechanic -- RAP credits up to $50/month of principal reduction even when the payment does not cover it, which is what lets a low RAP payment still amortize instead of growing forever. Both happen to be $50; they are not the same $50. Sourced from secondary reporting on P.L. 119-21; VERIFY against the statute before launch.",
+    "verifyBeforeLaunch": true
+  },
+
+  "forgivenessTaxTreatment": {
+    "IBR": { "taxableFederal": true },
+    "RAP": { "taxableFederal": true },
+    "PSLF": { "taxableFederal": false },
+    "note": "Federal treatment only; state conformity varies and is not modeled. The temporary federal exclusion for discharged student debt expired at the end of 2025, so IDR forgiveness (IBR, RAP) is treated as taxable federal income in the year of discharge. PSLF forgiveness has its own separate, longstanding statutory exclusion (not the expired pandemic-era one) and remains tax-free. This is a live legislative area -- VERIFY before launch.",
     "verifyBeforeLaunch": true
   },
 
@@ -101,9 +111,9 @@
       "name": "RAP",
       "status": "active",
       "planMinPayment": 10.0,
-      "forgivenessTerm": null,
+      "forgivenessTerm": 30,
       "discretionaryIncomeFormula": false,
-      "note": "Uses AGI-based bracket lookup instead"
+      "note": "Uses AGI-based bracket lookup instead. Forgives at 360 qualifying payments (30 years)."
     }
   ]
 }
