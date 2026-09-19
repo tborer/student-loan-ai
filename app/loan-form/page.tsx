@@ -2,38 +2,168 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import type { BorrowerInfo, Loan } from '@/components/LoanForm';
+import { runAnalysis } from '@/utils/analysis';
+import { analysisConfig } from '../lib/config';
+import { storeAnalysis } from '../lib/analysis-session';
 
-// Define Loan type explicitly to avoid TypeScript errors
-interface Loan {
-  id: number;
-  type: string;
-  balance: number;
-  interestRate: number;
-  servicer?: string;
+/**
+ * Numeric fields are held as strings so the inputs can be genuinely empty
+ * rather than showing a spurious 0. They are parsed and validated on submit.
+ */
+interface FormLoan {
+  id: string;
+  type: Loan['type'] | '';
+  balance: string;
+  interestRate: string;
+  servicer: string;
 }
+
+const LOAN_TYPES: Loan['type'][] = [
+  'Direct Subsidized',
+  'Direct Unsubsidized',
+  'Direct PLUS',
+  'FFEL',
+  'Perkins',
+  'Private',
+];
+
+const blankLoan = (): FormLoan => ({
+  id: `loan-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  type: '',
+  balance: '',
+  interestRate: '',
+  servicer: '',
+});
 
 export default function LoanFormPage() {
   const router = useRouter();
-  
-  // Form state with proper typing
-  const [loans, setLoans] = useState<Loan[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Mock analysis result (in production, this would call the backend)
-  const runAnalysis = async () => {
-    // Validate inputs
+
+  const [loans, setLoans] = useState<FormLoan[]>([blankLoan()]);
+  const [annualIncome, setAnnualIncome] = useState('');
+  const [householdSize, setHouseholdSize] = useState('1');
+  const [filingStatus, setFilingStatus] =
+    useState<BorrowerInfo['filingStatus']>('Single');
+  const [stateOfResidence, setStateOfResidence] = useState('');
+  const [employmentSector, setEmploymentSector] =
+    useState<BorrowerInfo['employmentSector']>('Private');
+  const [yearsInQualifyingRepayment, setYearsInQualifyingRepayment] = useState('');
+  const [creditScoreBand, setCreditScoreBand] = useState<'' | NonNullable<BorrowerInfo['creditScoreBand']>>('');
+
+  const [errors, setErrors] = useState<string[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const updateLoan = (id: string, patch: Partial<FormLoan>) => {
+    setLoans((current) =>
+      current.map((loan) => (loan.id === id ? { ...loan, ...patch } : loan))
+    );
+  };
+
+  const removeLoan = (id: string) => {
+    setLoans((current) => current.filter((loan) => loan.id !== id));
+  };
+
+  /** Validation mirrors the field rules in the functional spec. */
+  const validate = (): { messages: string[]; loans: Loan[]; borrower: BorrowerInfo } => {
+    const messages: string[] = [];
+
     if (loans.length === 0) {
-      setError('Please add at least one loan.');
+      messages.push('Add at least one loan.');
+    }
+
+    const parsedLoans: Loan[] = [];
+    loans.forEach((loan, index) => {
+      const label = `Loan #${index + 1}`;
+
+      if (!loan.type) {
+        messages.push(`${label}: choose a loan type.`);
+      }
+
+      const balance = Number(loan.balance);
+      if (loan.balance.trim() === '' || Number.isNaN(balance) || balance <= 0) {
+        messages.push(`${label}: balance must be greater than $0.`);
+      }
+
+      const interestRate = Number(loan.interestRate);
+      if (
+        loan.interestRate.trim() === '' ||
+        Number.isNaN(interestRate) ||
+        interestRate < 0 ||
+        interestRate > 25
+      ) {
+        messages.push(`${label}: interest rate must be between 0% and 25%.`);
+      }
+
+      if (loan.type && balance > 0 && interestRate >= 0 && interestRate <= 25) {
+        parsedLoans.push({
+          id: loan.id,
+          type: loan.type,
+          balance,
+          interestRate,
+          servicer: loan.servicer.trim() || undefined,
+        });
+      }
+    });
+
+    // $0 is a valid income (unemployed) per the spec, so only blank,
+    // non-numeric or negative is rejected.
+    const income = Number(annualIncome);
+    if (annualIncome.trim() === '' || Number.isNaN(income) || income < 0) {
+      messages.push('Annual gross income must be $0 or greater.');
+    }
+
+    const household = Number(householdSize);
+    if (!Number.isInteger(household) || household < 1) {
+      messages.push('Household size must be at least 1.');
+    }
+
+    const years = yearsInQualifyingRepayment.trim();
+    if (years !== '' && (Number.isNaN(Number(years)) || Number(years) < 0)) {
+      messages.push('Years in qualifying repayment must be 0 or greater.');
+    }
+
+    const borrower: BorrowerInfo = {
+      annualIncome: income,
+      householdSize: household,
+      filingStatus,
+      stateOfResidence: stateOfResidence.trim() || undefined,
+      employmentSector,
+      yearsInQualifyingRepayment: years === '' ? undefined : Number(years),
+      creditScoreBand: creditScoreBand || undefined,
+    };
+
+    return { messages, loans: parsedLoans, borrower };
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const { messages, loans: parsedLoans, borrower } = validate();
+    if (messages.length > 0) {
+      setErrors(messages);
       return;
     }
-    
+
+    setErrors([]);
+    setIsAnalyzing(true);
+
     try {
-      // Simulate analysis call to serverless function
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      const result = runAnalysis(parsedLoans, borrower, analysisConfig);
+      const stored = storeAnalysis(result);
+
+      if (!stored) {
+        setErrors([
+          'Your browser blocked session storage, so we could not hold your results. Enable storage for this site and try again.',
+        ]);
+        setIsAnalyzing(false);
+        return;
+      }
+
       router.push('/results');
-    } catch (err) {
-      setError('An error occurred while submitting your analysis request.');
+    } catch (error) {
+      console.error('Analysis failed:', error);
+      setErrors(['Something went wrong while analyzing your loans. Please try again.']);
+      setIsAnalyzing(false);
     }
   };
 
@@ -42,223 +172,217 @@ export default function LoanFormPage() {
       <div className="container">
         <header>
           <h1>Analyze Your Student Loans</h1>
-          <p className="intro">Enter your loan details and borrower information below. We&apos;ll generate a free teaser analysis first.</p>
+          <p className="intro">
+            Enter your loan details and borrower information below. We&apos;ll generate a free
+            teaser analysis first.
+          </p>
         </header>
 
-        {error && (
+        {errors.length > 0 && (
           <div className="error-message" role="alert">
-            <p>{error}</p>
-            <button onClick={() => setError(null)}>Dismiss</button>
+            <p>Please fix the following:</p>
+            <ul>
+              {errors.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
           </div>
         )}
 
-        {/* Loan Add Section */}
-        <section className="add-loan">
-          <h2>Add Loans</h2>
-          <button 
-            onClick={() => {
-              const newLoan: Loan = { 
-                id: Date.now(), 
-                type: '', 
-                balance: 0, 
-                interestRate: 0 
-              };
-              setLoans([...loans, newLoan]);
-            }}
-          >
-            + Add Another Loan
-          </button>
-        </section>
+        <form onSubmit={handleSubmit} noValidate>
+          <section className="add-loan">
+            <h2>Your Loans</h2>
 
-        {/* Loan Details (rendered once per loan) */}
-        <div className="loan-details-list">
-          {loans.map((loan) => (
-            <fieldset key={loan.id} className="loan-fieldset">
-              <legend>Loan #{loans.indexOf(loan) + 1}</legend>
-              
-              <div className="form-row">
-                <label htmlFor={`loan-type-${loan.id}`} className="required">
-                  Loan Type *
-                </label>
-                <select
-                  id={`loan-type-${loan.id}`}
-                  value={loan.type}
-                  onChange={(e) => {
-                    const updatedLoans = [...loans];
-                    updatedLoans[updatedLoans.indexOf(loan)] = {
-                      ...loan,
-                      type: e.target.value as string,
-                    };
-                    setLoans(updatedLoans);
-                  }}
-                >
-                  <option value="">Select a loan type...</option>
-                  <option value="Direct Subsidized">Direct Subsidized</option>
-                  <option value="Direct Unsubsidized">Direct Unsubsidized</option>
-                  <option value="Direct PLUS">Direct PLUS</option>
-                  <option value="FFEL">FFEL</option>
-                  <option value="Perkins">Perkins</option>
-                  <option value="Private">Private</option>
-                </select>
-              </div>
+            <div className="loan-details-list">
+              {loans.map((loan, index) => (
+                <fieldset key={loan.id} className="loan-fieldset">
+                  <legend>Loan #{index + 1}</legend>
 
-              <div className="form-row">
-                <label htmlFor={`balance-${loan.id}`} className="required">
-                  Balance ($) *
-                </label>
-                <input
-                  id={`balance-${loan.id}`}
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={loan.balance}
-                  onChange={(e) => {
-                    const updatedLoans = [...loans];
-                    updatedLoans[updatedLoans.indexOf(loan)] = {
-                      ...loan,
-                      balance: parseFloat(e.target.value) || 0,
-                    };
-                    setLoans(updatedLoans);
-                  }}
-                />
-              </div>
+                  <div className="form-row">
+                    <label htmlFor={`loan-type-${loan.id}`}>Loan type *</label>
+                    <select
+                      id={`loan-type-${loan.id}`}
+                      value={loan.type}
+                      onChange={(e) =>
+                        updateLoan(loan.id, { type: e.target.value as FormLoan['type'] })
+                      }
+                    >
+                      <option value="">Select a loan type...</option>
+                      {LOAN_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="form-row">
-                <label htmlFor={`interest-${loan.id}`} className="required">
-                  Interest Rate (%) *
-                </label>
-                <input
-                  id={`interest-${loan.id}`}
-                  type="number"
-                  min="0"
-                  max="25"
-                  step="0.01"
-                  value={loan.interestRate}
-                  onChange={(e) => {
-                    const updatedLoans = [...loans];
-                    updatedLoans[updatedLoans.indexOf(loan)] = {
-                      ...loan,
-                      interestRate: parseFloat(e.target.value) || 0,
-                    };
-                    setLoans(updatedLoans);
-                  }}
-                />
-                <small className="help-text">Valid range: 0-25%</small>
-              </div>
+                  <div className="form-row">
+                    <label htmlFor={`balance-${loan.id}`}>Balance ($) *</label>
+                    <input
+                      id={`balance-${loan.id}`}
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={loan.balance}
+                      onChange={(e) => updateLoan(loan.id, { balance: e.target.value })}
+                    />
+                  </div>
 
-              <div className="form-row">
-                <label htmlFor={`servicer-${loan.id}`} className="optional">
-                  Servicer (improves accuracy)
-                </label>
-                <input
-                  id={`servicer-${loan.id}`}
-                  type="text"
-                  placeholder="e.g., MOHELA, Aidvantage Federal"
-                  value={loan.servicer || ''}
-                  onChange={(e) => {
-                    const updatedLoans = [...loans];
-                    updatedLoans[updatedLoans.indexOf(loan)] = {
-                      ...loan,
-                      servicer: e.target.value,
-                    };
-                    setLoans(updatedLoans);
-                  }}
-                />
-              </div>
-            </fieldset>
-          ))}
-        </div>
+                  <div className="form-row">
+                    <label htmlFor={`interest-${loan.id}`}>Interest rate (%) *</label>
+                    <input
+                      id={`interest-${loan.id}`}
+                      type="number"
+                      min="0"
+                      max="25"
+                      step="0.01"
+                      value={loan.interestRate}
+                      onChange={(e) => updateLoan(loan.id, { interestRate: e.target.value })}
+                      aria-describedby={`interest-help-${loan.id}`}
+                    />
+                    <small id={`interest-help-${loan.id}`} className="help-text">
+                      Valid range: 0-25%
+                    </small>
+                  </div>
 
-        {/* Borrower Information */}
-        <section className="borrower-info">
-          <h2>Borrower Information</h2>
-          
-          <div className="form-row">
-            <label htmlFor="annualIncome" className="required">
-              Annual gross income ($) *
-            </label>
-            <input
-              id="annualIncome"
-              type="number"
-              min="0"
-              placeholder="e.g., 45000 (or $0 if unemployed)"
-            />
-          </div>
+                  <div className="form-row">
+                    <label htmlFor={`servicer-${loan.id}`}>Servicer (improves accuracy)</label>
+                    <input
+                      id={`servicer-${loan.id}`}
+                      type="text"
+                      placeholder="e.g., MOHELA, Aidvantage"
+                      value={loan.servicer}
+                      onChange={(e) => updateLoan(loan.id, { servicer: e.target.value })}
+                    />
+                  </div>
 
-          <div className="form-row">
-            <label htmlFor="householdSize" className="required">
-              Household size *
-            </label>
-            <input
-              id="householdSize"
-              type="number"
-              min="1"
-              defaultValue={1}
-            />
-          </div>
+                  {loans.length > 1 && (
+                    <button type="button" onClick={() => removeLoan(loan.id)}>
+                      Remove Loan #{index + 1}
+                    </button>
+                  )}
+                </fieldset>
+              ))}
+            </div>
 
-          <div className="form-row">
-            <label htmlFor="filingStatus" className="required">
-              Filing status *
-            </label>
-            <select id="filingStatus">
-              <option value="Single">Single</option>
-              <option value="Married Filing Jointly">Married Filing Jointly</option>
-              <option value="Married Filing Separately">Married Filing Separately</option>
-            </select>
-          </div>
-
-          <div className="form-row">
-            <label htmlFor="stateOfResidence" className="optional">
-              State of residence (improves accuracy for state programs)
-            </label>
-            <input id="stateOfResidence" type="text" placeholder="e.g., CA, NY" />
-          </div>
-
-          <div className="form-row">
-            <label htmlFor="employmentSector" className="required">
-              Employment sector *
-            </label>
-            <select id="employmentSector">
-              <option value="Nonprofit/Government (PSLF)">Nonprofit/Government (PSLF)</option>
-              <option value="Private">Private</option>
-              <option value="Self-employed">Self-employed</option>
-            </select>
-          </div>
-
-          <div className="form-row">
-            <label htmlFor="yearsInQualifyingRepayment" className="optional">
-              Years in qualifying repayment (improves PSLF progress estimate)
-            </label>
-            <input id="yearsInQualifyingRepayment" type="number" min="0" />
-          </div>
-
-          <div className="form-row">
-            <label htmlFor="creditScoreBand" className="optional">
-              Credit score band (improves refinance rate estimate)
-            </label>
-            <select id="creditScoreBand">
-              <option value="<650">&lt;650</option>
-              <option value="650-699">650-699</option>
-              <option value="700-749">700-749</option>
-              <option value="750+">750+</option>
-            </select>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="form-actions">
-            <button 
-              onClick={runAnalysis}
-              className="btn-primary"
-              style={{ width: '100%' }}
-            >
-              Analyze My Loans
+            <button type="button" onClick={() => setLoans((c) => [...c, blankLoan()])}>
+              + Add Another Loan
             </button>
-            <button onClick={() => router.push('/')} className="btn-secondary">
+          </section>
+
+          <section className="borrower-info">
+            <h2>Borrower Information</h2>
+
+            <div className="form-row">
+              <label htmlFor="annualIncome">Annual gross income ($) *</label>
+              <input
+                id="annualIncome"
+                type="number"
+                min="0"
+                placeholder="e.g., 45000 (enter 0 if unemployed)"
+                value={annualIncome}
+                onChange={(e) => setAnnualIncome(e.target.value)}
+              />
+            </div>
+
+            <div className="form-row">
+              <label htmlFor="householdSize">Household size *</label>
+              <input
+                id="householdSize"
+                type="number"
+                min="1"
+                value={householdSize}
+                onChange={(e) => setHouseholdSize(e.target.value)}
+              />
+            </div>
+
+            <div className="form-row">
+              <label htmlFor="filingStatus">Filing status *</label>
+              <select
+                id="filingStatus"
+                value={filingStatus}
+                onChange={(e) =>
+                  setFilingStatus(e.target.value as BorrowerInfo['filingStatus'])
+                }
+              >
+                <option value="Single">Single</option>
+                <option value="Married Filing Jointly">Married Filing Jointly</option>
+                <option value="Married Filing Separately">Married Filing Separately</option>
+              </select>
+            </div>
+
+            <div className="form-row">
+              <label htmlFor="employmentSector">Employment sector *</label>
+              <select
+                id="employmentSector"
+                value={employmentSector}
+                onChange={(e) =>
+                  setEmploymentSector(e.target.value as BorrowerInfo['employmentSector'])
+                }
+              >
+                <option value="Nonprofit/Government (PSLF)">Nonprofit/Government</option>
+                <option value="Private">Private</option>
+                <option value="Self-employed">Self-employed</option>
+              </select>
+            </div>
+
+            <div className="form-row">
+              <label htmlFor="stateOfResidence">
+                State of residence (improves accuracy for state programs)
+              </label>
+              <input
+                id="stateOfResidence"
+                type="text"
+                placeholder="e.g., CA, NY"
+                value={stateOfResidence}
+                onChange={(e) => setStateOfResidence(e.target.value)}
+              />
+            </div>
+
+            <div className="form-row">
+              <label htmlFor="yearsInQualifyingRepayment">
+                Years in qualifying repayment (improves PSLF progress estimate)
+              </label>
+              <input
+                id="yearsInQualifyingRepayment"
+                type="number"
+                min="0"
+                value={yearsInQualifyingRepayment}
+                onChange={(e) => setYearsInQualifyingRepayment(e.target.value)}
+              />
+            </div>
+
+            <div className="form-row">
+              <label htmlFor="creditScoreBand">
+                Credit score band (improves refinance rate estimate)
+              </label>
+              <select
+                id="creditScoreBand"
+                value={creditScoreBand}
+                onChange={(e) =>
+                  setCreditScoreBand(
+                    e.target.value as '' | NonNullable<BorrowerInfo['creditScoreBand']>
+                  )
+                }
+              >
+                <option value="">Prefer not to say</option>
+                <option value="<650">Below 650</option>
+                <option value="650-699">650-699</option>
+                <option value="700-749">700-749</option>
+                <option value="750+">750 or above</option>
+              </select>
+            </div>
+          </section>
+
+          <div className="form-actions">
+            <button type="submit" className="btn-primary" disabled={isAnalyzing}>
+              {isAnalyzing ? 'Analyzing...' : 'Analyze My Loans'}
+            </button>
+            <button type="button" onClick={() => router.push('/')} className="btn-secondary">
               Back to Home
             </button>
           </div>
-        </section>
+        </form>
       </div>
     </main>
   );

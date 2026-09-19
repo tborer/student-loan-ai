@@ -8,27 +8,26 @@
 
 import type { Loan, BorrowerInfo } from '../components/LoanForm';
 
-/** Configuration loaded from regulatory.json */
-interface RegulatoryConfig {
-  repaymentPlans: {
-    SAVE: { status: string; effectiveFor: string | null };
-    IBR: { status: string; planMinPayment: number };
-    RAP: { status: string; effectiveDate: string; agilPercentRange: [number, number] };
-    PAYE: { status: string };
-    ICR: { status: string };
-    tieredStandard: { terms: number[] };
-  };
+/**
+ * Configuration loaded from regulatory.json.
+ *
+ * Shapes are kept loose where runAnalysis does not read them: only idrPlans
+ * is consumed below, and over-specifying the rest made the real config file
+ * fail to typecheck against this interface.
+ */
+export interface RegulatoryConfig {
+  repaymentPlans: Record<string, Record<string, unknown>>;
   rapBrackets: Array<{ agiPercentMin: number; agiPercentMax: number; paymentPercent: number }>;
   idrPlans: Array<{ name: string; status: string; planMinPayment: number; discretionaryIncomeFormula: boolean }>;
 }
 
 /** Configuration loaded from providers.json */
-interface ProviderConfig {
+export interface ProviderConfig {
   refinanceLenders: Array<{ name: string; url: string; creditTierMin?: string }>;
-  federalPortals: Array<{ name: string; url: string; type: 'federal_idr' | 'consolidation' | 'pslf' }>;
+  federalPortals: Array<{ name: string; url: string; type: string }>;
 }
 
-interface AnalysisResult {
+export interface AnalysisResult {
   eligibleStrategies: Array<{
     id: string;
     title: string;
