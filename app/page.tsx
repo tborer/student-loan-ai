@@ -2,10 +2,17 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Modal from './components/Modal';
+import ContactForm from './components/ContactForm';
+import PrivacyPolicy from '@/components/terms-and-privacy/PrivacyPolicy';
+import TermsOfService from '@/components/terms-and-privacy/TermsOfService';
+
+type FooterModal = 'privacy' | 'terms' | 'contact' | null;
 
 export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState<string>('');
+  const [activeModal, setActiveModal] = useState<FooterModal>(null);
 
   return (
     <main className="home">
@@ -91,15 +98,39 @@ export default function Home() {
       <footer className="footer" role="contentinfo">
         <nav aria-label="Footer navigation">
           <a href="/about">About</a>
-          <a href="/privacy">Privacy Policy</a>
-          <a href="/terms">Terms of Service</a>
-          <a href="/contact">Contact</a>
+          <button type="button" className="footer-link" onClick={() => setActiveModal('privacy')}>
+            Privacy Policy
+          </button>
+          <button type="button" className="footer-link" onClick={() => setActiveModal('terms')}>
+            Terms of Service
+          </button>
+          <button type="button" className="footer-link" onClick={() => setActiveModal('contact')}>
+            Contact
+          </button>
         </nav>
         <p className="disclaimer">
           Educational tool only. Not financial, legal, or tax advice. Consult a qualified advisor before making decisions.
         </p>
         <p>&copy; {new Date().getFullYear()} Student Loan Repayment Analyzer</p>
       </footer>
+
+      {activeModal === 'privacy' && (
+        <Modal titleId="privacy-modal-title" title="Privacy Policy" onClose={() => setActiveModal(null)}>
+          <PrivacyPolicy />
+        </Modal>
+      )}
+
+      {activeModal === 'terms' && (
+        <Modal titleId="terms-modal-title" title="Terms of Service" onClose={() => setActiveModal(null)}>
+          <TermsOfService />
+        </Modal>
+      )}
+
+      {activeModal === 'contact' && (
+        <Modal titleId="contact-modal-title" title="Contact Us" onClose={() => setActiveModal(null)}>
+          <ContactForm />
+        </Modal>
+      )}
     </main>
   );
 }

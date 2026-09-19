@@ -29,7 +29,11 @@
 
 | Variable Name | Value Format | Where to Get It | When to Change |
 |--------------|-------------|-----------------|----------------|
-| `NEXT_PUBLIC_STRIPE_PRICE_ID` | `price_1ABC...` | Stripe Products > Create Product > Create Price | When you set your price point |
+| `STRIPE_PRICE_ID` | `price_1ABC...` | Stripe Products > Create Product > Create Price | When you set your price point |
+
+Server-side only, not `NEXT_PUBLIC_...`: the price is read inside
+`/api/create-checkout-session` and never comes from the browser, so a
+customer can't tamper with the price they're charged.
 
 **How to create a Stripe Product & Price:**
 1. Go to Stripe Dashboard: https://dashboard.stripe.com/test/products (or `/live/products`)
@@ -42,7 +46,30 @@
 8. Select currency: `usd`
 9. Set billing cycle to "one-time" (not recurring)
 10. Copy the **Price ID** (`price_...`)
-11. Add as environment variable in Vercel: `NEXT_PUBLIC_STRIPE_PRICE_ID=price_...`
+11. Add as environment variable in Vercel: `STRIPE_PRICE_ID=price_...`
+
+---
+
+## Contact Form (SMTP)
+
+The homepage's Contact modal posts to `/api/contact`, which relays the
+message over SMTP. `CONTACT_TO_EMAIL` is read only inside that server route
+and is never sent to the browser -- nothing about it appears in the page,
+the client bundle, or any API response.
+
+| Variable Name | Required? | Value Format | Where to Get It |
+|--------------|-----------|-------------|-----------------|
+| `SMTP_HOST` | Yes | `smtp.yourprovider.com` | Your SMTP provider (e.g. a transactional-email service, or your domain's mail host) |
+| `SMTP_PORT` | Yes | `587` (or `465`) | Same |
+| `SMTP_USER` | Yes | Your SMTP username | Same |
+| `SMTP_PASSWORD` | Yes | Your SMTP password | Same |
+| `SMTP_FROM` | Yes | `"Name <no-reply@yourdomain.com>"` | Must usually be an address/domain your provider has verified you can send as |
+| `CONTACT_TO_EMAIL` | Yes | `you@yourdomain.com` | The inbox that receives messages. Never exposed to visitors. |
+| `SMTP_SECURE` | No, defaults to `false` | `true` for port 465 (implicit TLS), `false` for port 587 (STARTTLS) | Set to `true` only if using port 465 |
+
+The six required variables are all that gate the form: if any is missing,
+the route returns a generic "not available right now" error to the visitor
+and logs the specific missing variable server-side (visible in Vercel logs).
 
 ---
 
