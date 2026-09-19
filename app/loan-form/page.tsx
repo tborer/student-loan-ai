@@ -22,7 +22,8 @@ interface FormLoan {
 const LOAN_TYPES: Loan['type'][] = [
   'Direct Subsidized',
   'Direct Unsubsidized',
-  'Direct PLUS',
+  'Direct PLUS (Grad)',
+  'Direct PLUS (Parent)',
   'FFEL',
   'Perkins',
   'Private',
@@ -49,6 +50,8 @@ export default function LoanFormPage() {
     useState<BorrowerInfo['employmentSector']>('Private');
   const [yearsInQualifyingRepayment, setYearsInQualifyingRepayment] = useState('');
   const [creditScoreBand, setCreditScoreBand] = useState<'' | NonNullable<BorrowerInfo['creditScoreBand']>>('');
+  const [paymentStatus, setPaymentStatus] =
+    useState<BorrowerInfo['paymentStatus']>('current');
 
   const [errors, setErrors] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -130,6 +133,7 @@ export default function LoanFormPage() {
       employmentSector,
       yearsInQualifyingRepayment: years === '' ? undefined : Number(years),
       creditScoreBand: creditScoreBand || undefined,
+      paymentStatus,
     };
 
     return { messages, loans: parsedLoans, borrower };
@@ -272,6 +276,26 @@ export default function LoanFormPage() {
 
           <section className="borrower-info">
             <h2>Borrower Information</h2>
+
+            <div className="form-row">
+              <label htmlFor="paymentStatus">Are you current on your loan payments? *</label>
+              <select
+                id="paymentStatus"
+                value={paymentStatus}
+                onChange={(e) =>
+                  setPaymentStatus(e.target.value as BorrowerInfo['paymentStatus'])
+                }
+                aria-describedby="payment-status-help"
+              >
+                <option value="current">Yes, current</option>
+                <option value="delinquent">No, I&apos;m behind (delinquent)</option>
+                <option value="default">No, my loans are in default</option>
+              </select>
+              <small id="payment-status-help" className="help-text">
+                This changes what we recommend: being behind or in default affects which options
+                are actually available to you.
+              </small>
+            </div>
 
             <div className="form-row">
               <label htmlFor="annualIncome">Annual gross income ($) *</label>

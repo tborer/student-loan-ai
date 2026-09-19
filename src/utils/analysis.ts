@@ -97,8 +97,19 @@ export interface Strategy {
   estimatedAnnualSavings?: number;
   lifetimeCost?: LifetimeCost;
   tradeoffs?: string[];
-  /** Risks the user must see before acting, not merely trade-offs. */
+  /**
+   * Dollar-figure risk disclosures (lifetime cost, forgiven balance) --
+   * paywalled with the rest of the strategy's numbers. For risk disclosures
+   * that carry no dollar figure, see riskWarnings.
+   */
   warnings?: string[];
+  /**
+   * Eligibility- and risk-critical text that carries no dollar figure, e.g.
+   * "refinancing forfeits federal protections permanently." Meant to be
+   * shown on the free tier regardless of payment status: burying an
+   * irreversible-risk warning behind a paywall protects the wrong thing.
+   */
+  riskWarnings?: string[];
 }
 
 export interface AnalysisResult {
@@ -127,6 +138,16 @@ const isFederal = (type: Loan['type']): boolean => type !== 'Private';
 /** Only Direct loans reach IDR and PSLF without consolidating first. */
 const isDirect = (type: Loan['type']): boolean => type.startsWith('Direct');
 
+const isParentPlus = (type: Loan['type']): boolean => type === 'Direct PLUS (Parent)';
+
+/**
+ * Direct loans reach IDR/PSLF directly -- except Parent PLUS, which RAP
+ * excludes outright and which only ever reached IBR via ICR after
+ * consolidating by 2026-06-30, a window now closed for anyone who had not
+ * already acted. See docs/counselor-expert-review.md #1.
+ */
+const isIdrEligibleDirect = (type: Loan['type']): boolean => isDirect(type) && !isParentPlus(type);
+
 /** Standard amortized monthly payment. */
 export const standardMonthlyPayment = (
   balance: number,
@@ -138,6 +159,14 @@ export const standardMonthlyPayment = (
   const monthlyRate = annualRatePercent / 100 / 12;
   if (monthlyRate === 0) return balance / months;
   return (balance * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months));
+};
+
+/** Balance-weighted average rate across a set of loans, or 0 if none. */
+const weightedRate = (loans: Loan[]): { balance: number; rate: number } => {
+  const balance = loans.reduce((sum, loan) => sum + loan.balance, 0);
+  const rate =
+    balance > 0 ? loans.reduce((sum, loan) => sum + loan.balance * loan.interestRate, 0) / balance : 0;
+  return { balance, rate };
 };
 
 const povertyLine = (householdSize: number, config: RegulatoryConfig): number =>
@@ -226,11 +255,9 @@ export const calculateRefinanceSavings = (
 
 /** Consolidation rate is the weighted average, rounded up to the nearest 1/8%. */
 export const calculateConsolidationRate = (loans: Loan[]): number => {
-  const totalBalance = loans.reduce((sum, loan) => sum + loan.balance, 0);
-  if (totalBalance <= 0) return 0;
-  const weighted =
-    loans.reduce((sum, loan) => sum + loan.balance * loan.interestRate, 0) / totalBalance;
-  return Math.ceil(weighted * 8) / 8;
+  const { balance, rate } = weightedRate(loans);
+  if (balance <= 0) return 0;
+  return Math.ceil(rate * 8) / 8;
 };
 
 interface PayoffSimulationResult {
@@ -334,13 +361,14 @@ const buildLifetimeCost = (
   deltaVsBaseline: Math.round(simulation.totalPaid - baselineTotalPaid),
 });
 
-/** A plain-language line for the lifetime-cost delta, so it can't be silently dropped from the UI later. */
+/** A plain-language line for the lifetime-cost delta. Carries a dollar figure -- paywalled via Strategy.warnings. */
 const lifetimeCostWarning = (lifetimeCost: LifetimeCost): string | null => {
   if (lifetimeCost.deltaVsBaseline <= 0) return null;
   const extra = lifetimeCost.deltaVsBaseline.toLocaleString('en-US');
   return `Lower monthly payment, but an estimated $${extra} more paid over ${lifetimeCost.termYears} years than the standard 10-year plan.`;
 };
 
+/** Carries a dollar figure -- paywalled via Strategy.warnings, unlike riskWarnings. */
 const forgivenessWarning = (lifetimeCost: LifetimeCost): string | null => {
   if (lifetimeCost.paidOffBeforeTerm || lifetimeCost.forgivenBalance === undefined) return null;
   const amount = lifetimeCost.forgivenBalance.toLocaleString('en-US');
@@ -362,11 +390,7 @@ export const runAnalysis = (
   config: RegulatoryConfig & ProviderConfig,
   today: Date = new Date()
 ): AnalysisResult => {
-  const totalBalance = loans.reduce((sum, loan) => sum + loan.balance, 0);
-  const weightedAverageRate =
-    totalBalance > 0
-      ? loans.reduce((sum, loan) => sum + loan.balance * loan.interestRate, 0) / totalBalance
-      : 0;
+  const { balance: totalBalance, rate: weightedAverageRate } = weightedRate(loans);
 
   const baselineMonthlyPayment = standardMonthlyPayment(totalBalance, weightedAverageRate);
   const baselineLifetimeCost = baselineMonthlyPayment * STANDARD_TERM_MONTHS;
@@ -379,12 +403,45 @@ export const runAnalysis = (
     baselineLifetimeCost: Math.round(baselineLifetimeCost),
   };
 
-  // Loan classification. Federal and Direct are distinct: FFEL and Perkins are
-  // federal but cannot reach IDR or PSLF without consolidating into a Direct
-  // loan first.
+  // A borrower in default is not enrolling in a new IDR plan, not making
+  // PSLF-qualifying payments, and unlikely to be approved for private
+  // refinancing -- every other recommendation below assumes a premise this
+  // borrower does not have. One clear next step, nothing else, rather than
+  // strategies that would be actively misleading to show as available.
+  if (borrower.paymentStatus === 'default') {
+    results.recommendations.push(
+      'Your loans are in default. This blocks new IDR enrollment, PSLF progress, and most refinancing or consolidation options until it is resolved. The first step is getting out of default -- through loan rehabilitation (an agreement to make a set number of on-time payments) or Direct Consolidation. Start at studentaid.gov/default or by contacting your loan holder. Come back for a full analysis once that is resolved.'
+    );
+    return results;
+  }
+
+  if (borrower.paymentStatus === 'delinquent') {
+    results.recommendations.push(
+      'You mentioned you are behind on payments. Before anything else, contact your loan servicer about deferment or forbearance -- pausing payments now is far better than sliding into default, which would block most of the options below. If your loans are private, ask your lender directly: forbearance is not guaranteed the way it is for federal loans.'
+    );
+  }
+
+  // Loan classification. Federal, Direct, and IDR/PSLF-eligible-Direct are
+  // three different things: FFEL and Perkins are federal but not Direct;
+  // Parent PLUS is Direct but not IDR/PSLF-eligible (see isIdrEligibleDirect).
   const hasFederalLoans = loans.some((l) => isFederal(l.type));
-  const hasDirectLoans = loans.some((l) => isDirect(l.type));
   const nonDirectFederalLoans = loans.filter((l) => isFederal(l.type) && !isDirect(l.type));
+  const parentPlusLoans = loans.filter((l) => isParentPlus(l.type));
+  const idrEligibleLoans = loans.filter((l) => isIdrEligibleDirect(l.type));
+
+  // IDR/RAP/PSLF are computed against only the balance actually eligible for
+  // them. Folding a Parent PLUS balance into the same figure as a borrower's
+  // own Direct Subsidized/Unsubsidized debt would overstate what IDR would
+  // actually charge, since IDR does not reach that balance at all.
+  const { balance: idrBalance, rate: idrRate } = weightedRate(idrEligibleLoans);
+  const idrBaselineMonthly = standardMonthlyPayment(idrBalance, idrRate);
+  const idrBaselineLifetime = idrBaselineMonthly * STANDARD_TERM_MONTHS;
+
+  if (parentPlusLoans.length > 0) {
+    results.ineligibleFor.push(
+      'Income-driven repayment and PSLF for your Parent PLUS balance — RAP excludes Parent PLUS loans outright, and the only path to IBR required consolidating by June 30, 2026, which has passed. If you already consolidated before that date, check studentaid.gov for your ICR options directly; otherwise this balance currently has no IDR path.'
+    );
+  }
 
   // The deadline to consolidate FFEL/Perkins while preserving IDR/PSLF
   // eligibility. Compared at runtime, since the answer changes on that date.
@@ -407,6 +464,7 @@ export const runAnalysis = (
     title: 'Refinancing with a Private Lender',
     tradeoffs: ['Fixed or variable private rate, set by your credit profile'],
   };
+  const refinanceRiskWarnings: string[] = [];
 
   if (refinanceSavings !== null) {
     const targetRate = ILLUSTRATIVE_REFINANCE_RATES[borrower.creditScoreBand as string];
@@ -426,10 +484,16 @@ export const runAnalysis = (
   }
 
   if (hasFederalLoans) {
-    refinance.warnings = [
-      'Refinancing a federal loan converts it to private debt and permanently forfeits IDR, RAP, PSLF, deferment and forgiveness eligibility. This cannot be undone.',
-    ];
+    refinanceRiskWarnings.push(
+      'Refinancing a federal loan converts it to private debt and permanently forfeits IDR, RAP, PSLF, deferment and forgiveness eligibility. This cannot be undone.'
+    );
   }
+  if (borrower.paymentStatus === 'delinquent') {
+    refinanceRiskWarnings.push(
+      'Being behind on payments may make it harder to qualify for private refinancing -- lenders check payment history.'
+    );
+  }
+  if (refinanceRiskWarnings.length > 0) refinance.riskWarnings = refinanceRiskWarnings;
 
   // Only surface refinancing when it would actually help, or when we cannot
   // yet tell because the credit band is missing.
@@ -439,13 +503,14 @@ export const runAnalysis = (
     results.eligibleStrategies.push(refinance);
   }
 
-  // Strategy B: Income-driven repayment. Direct loans only. Also feeds PSLF
-  // below, which forgives at 120 payments under whichever qualifying IDR plan
-  // the borrower would actually use.
+  // Strategy B: Income-driven repayment. IDR-eligible Direct loans only
+  // (excludes Parent PLUS -- see isIdrEligibleDirect). Also feeds PSLF below,
+  // which forgives at 120 payments under whichever qualifying IDR plan the
+  // borrower would actually use.
   const activeIdrPlans = config.idrPlans.filter((plan) => plan.status === 'active');
   let cheapestIdrForPslf: { monthly: number; mode: 'capitalizing' | 'rap-assisted' } | null = null;
 
-  if (hasDirectLoans) {
+  if (idrEligibleLoans.length > 0) {
     for (const plan of activeIdrPlans) {
       const isRap = plan.name === 'RAP';
       const monthly = isRap
@@ -454,8 +519,8 @@ export const runAnalysis = (
 
       const termYears = resolveForgivenessTermYears(plan.forgivenessTerm);
       const simulation = simulatePayoff(
-        totalBalance,
-        weightedAverageRate,
+        idrBalance,
+        idrRate,
         monthly,
         termYears * 12,
         isRap ? 'rap-assisted' : 'capitalizing',
@@ -467,7 +532,7 @@ export const runAnalysis = (
       const lifetimeCost = buildLifetimeCost(
         simulation,
         termYears,
-        baselineLifetimeCost,
+        idrBaselineLifetime,
         taxableFederal
       );
 
@@ -490,17 +555,29 @@ export const runAnalysis = (
         (w): w is string => w !== null
       );
 
-      results.eligibleStrategies.push({
+      const strategy: Strategy = {
         id: `idr_${plan.name.toLowerCase()}`,
         title: `Income-Driven Repayment (${plan.name})`,
         estimatedMonthlyPayment: Math.round(monthly),
-        estimatedAnnualSavings: Math.max(0, Math.round((baselineMonthlyPayment - monthly) * 12)),
+        estimatedAnnualSavings: Math.max(0, Math.round((idrBaselineMonthly - monthly) * 12)),
         lifetimeCost,
         tradeoffs,
         ...(warnings.length > 0 ? { warnings } : {}),
-      });
+      };
+
+      if (parentPlusLoans.length > 0) {
+        strategy.riskWarnings = [
+          `This estimate covers only your Direct Subsidized/Unsubsidized/Grad PLUS balance ($${Math.round(idrBalance).toLocaleString('en-US')}). Your Parent PLUS balance is not included -- see "Not eligible right now" for why.`,
+        ];
+      }
+
+      results.eligibleStrategies.push(strategy);
     }
-  } else {
+  } else if (parentPlusLoans.length === 0 && nonDirectFederalLoans.length > 0) {
+    // Parent PLUS holders already got a specific explanation above; an
+    // all-private borrower has no federal loans to consolidate at all, and
+    // gets nothing here. This is only for FFEL/Perkins holders with no
+    // Direct loans yet.
     results.recommendations.push('Consolidate FFEL/Perkins loans to access federal IDR plans');
   }
 
@@ -519,7 +596,7 @@ export const runAnalysis = (
           `New rate would be ${newRate.toFixed(3)}% — the weighted average, rounded up to the nearest 1/8%`,
           'Simplifies repayment, but does not lower your rate',
         ],
-        warnings: [
+        riskWarnings: [
           `The deadline to consolidate ${affected} loans while preserving IDR and PSLF eligibility passed on ${config.consolidationDeadline.historicalDeadline}. Those loans have permanently lost that eligibility, and consolidating now will not restore it.`,
         ],
       });
@@ -535,7 +612,7 @@ export const runAnalysis = (
           'Combines multiple loans into a single payment',
           `New rate would be ${newRate.toFixed(3)}% — the weighted average, rounded up to the nearest 1/8%`,
         ],
-        warnings: [
+        riskWarnings: [
           `Consolidating your ${affected} loans into a Direct Consolidation Loan is a prerequisite for IDR and PSLF, and the deadline to do so while preserving that eligibility is ${config.consolidationDeadline.historicalDeadline}.`,
           'Consolidation produces a weighted average of any PSLF qualifying-payment counts on the loans involved -- it does not preserve the highest count. Confirm your counts on studentaid.gov before consolidating if you are close to 120 payments.',
         ],
@@ -547,13 +624,13 @@ export const runAnalysis = (
     }
   }
 
-  // Strategy D: PSLF. Direct loans plus qualifying employment. Forgiveness is
-  // modeled at 120 payments under whichever active IDR plan gives the
-  // borrower the lowest qualifying payment, since that is the rational choice
-  // and PSLF itself does not set the payment amount.
+  // Strategy D: PSLF. IDR-eligible Direct loans plus qualifying employment.
+  // Forgiveness is modeled at 120 payments under whichever active IDR plan
+  // gives the borrower the lowest qualifying payment, since that is the
+  // rational choice and PSLF itself does not set the payment amount.
   const pslfEligibleEmployment = borrower.employmentSector === 'Nonprofit/Government (PSLF)';
 
-  if (pslfEligibleEmployment && hasDirectLoans) {
+  if (pslfEligibleEmployment && idrEligibleLoans.length > 0) {
     const tradeoffs = [
       'Requires a qualifying nonprofit or government employer',
       'Requires 120 qualifying payments while on a qualifying repayment plan',
@@ -568,11 +645,17 @@ export const runAnalysis = (
 
     const strategy: Strategy = { id: 'pslf', title: 'Public Service Loan Forgiveness (PSLF)', tradeoffs };
 
+    if (parentPlusLoans.length > 0) {
+      strategy.riskWarnings = [
+        `This estimate covers only your Direct Subsidized/Unsubsidized/Grad PLUS balance ($${Math.round(idrBalance).toLocaleString('en-US')}). Your Parent PLUS balance is not included -- see "Not eligible right now" for why.`,
+      ];
+    }
+
     if (cheapestIdrForPslf) {
       const pslfTermYears = config.pslfRules.qualifyingPayments / 12;
       const simulation = simulatePayoff(
-        totalBalance,
-        weightedAverageRate,
+        idrBalance,
+        idrRate,
         cheapestIdrForPslf.monthly,
         config.pslfRules.qualifyingPayments,
         cheapestIdrForPslf.mode,
@@ -581,7 +664,7 @@ export const runAnalysis = (
       const lifetimeCost = buildLifetimeCost(
         simulation,
         pslfTermYears,
-        baselineLifetimeCost,
+        idrBaselineLifetime,
         (config.forgivenessTaxTreatment.PSLF as { taxableFederal?: boolean } | undefined)
           ?.taxableFederal
       );
@@ -601,10 +684,14 @@ export const runAnalysis = (
     }
 
     results.eligibleStrategies.push(strategy);
-  } else if (pslfEligibleEmployment && !hasDirectLoans && hasFederalLoans) {
-    results.recommendations.push(
-      'PSLF requires Direct loans. Your federal loans would need to be consolidated into a Direct Consolidation Loan to qualify.'
-    );
+  } else if (pslfEligibleEmployment && idrEligibleLoans.length === 0 && hasFederalLoans) {
+    if (parentPlusLoans.length === 0) {
+      // Parent PLUS holders already got a specific explanation above; this
+      // generic one is only for FFEL/Perkins holders with no Direct loans.
+      results.recommendations.push(
+        'PSLF requires Direct loans. Your federal loans would need to be consolidated into a Direct Consolidation Loan to qualify.'
+      );
+    }
   }
 
   // Ranking: by monthly cash-flow relief, with strategies that have no

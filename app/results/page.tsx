@@ -116,6 +116,13 @@ export default function ResultsPage() {
           Free tier shows headlines only. Exact figures are deliberately not
           rendered here -- keeping them out of the DOM entirely, rather than
           hiding them with CSS, is what actually protects the paywall.
+
+          riskWarnings is the one exception: it carries no dollar figure, only
+          eligibility- and risk-critical text (e.g. "refinancing forfeits
+          federal protections permanently, this cannot be undone"). Paywalling
+          that would protect the wrong thing -- it costs nothing to give away
+          and it's the difference between informational and letting someone
+          make an irreversible choice for want of the unlock price.
         */}
         {strategies.map((strategy, index) => (
           <article key={strategy.id} className="strategy-card">
@@ -123,13 +130,31 @@ export default function ResultsPage() {
               <span className="badge">{index + 1}</span>
               <h3>{strategy.title}</h3>
             </div>
+            {strategy.riskWarnings && strategy.riskWarnings.length > 0 && (
+              <ul className="risk-warnings" aria-label={`Important information about ${strategy.title}`}>
+                {strategy.riskWarnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            )}
             <p className="disclaimer">
               Exact numbers, trade-offs and next steps are in the full report.
             </p>
           </article>
         ))}
 
-        {strategies.length === 0 && isLoaded && (
+        {result && result.ineligibleFor.length > 0 && (
+          <section className="ineligible-for" aria-label="Not eligible right now">
+            <h2>Not eligible right now</h2>
+            <ul>
+              {result.ineligibleFor.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {strategies.length === 0 && isLoaded && result && result.recommendations.length === 0 && (
           <p>
             Based on what you entered, we didn&apos;t find a strategy that clearly improves on
             your current terms. That can change as the federal rules do.

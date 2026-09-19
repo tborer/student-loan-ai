@@ -3,7 +3,24 @@ import './loan-form.css';
 
 export interface Loan {
   id?: string;
-  type: 'Direct Subsidized' | 'Direct Unsubsidized' | 'Direct PLUS' | 'FFEL' | 'Perkins' | 'Private';
+  /**
+   * Direct PLUS is split by who owes it: a Grad PLUS loan is the student's
+   * own debt and reaches IDR/PSLF like any other Direct loan. A Parent PLUS
+   * loan is the parent's debt and does not -- RAP excludes it outright, and
+   * it only ever reached IBR via ICR after consolidating by 2026-06-30, a
+   * window now closed for anyone who had not already acted. Collapsing both
+   * into one "Direct PLUS" option (as this used to) told Parent PLUS
+   * borrowers they were eligible for plans they are not.
+   * See docs/counselor-expert-review.md #1.
+   */
+  type:
+    | 'Direct Subsidized'
+    | 'Direct Unsubsidized'
+    | 'Direct PLUS (Grad)'
+    | 'Direct PLUS (Parent)'
+    | 'FFEL'
+    | 'Perkins'
+    | 'Private';
   balance: number;
   interestRate: number; // percentage
   servicer?: string;
@@ -17,6 +34,14 @@ export interface BorrowerInfo {
   employmentSector: 'Nonprofit/Government (PSLF)' | 'Private' | 'Self-employed';
   yearsInQualifyingRepayment?: number;
   creditScoreBand?: '<650' | '650-699' | '700-749' | '750+';
+  /**
+   * Gates most of the engine: a borrower in default is not enrolling in a
+   * new IDR plan, is not making PSLF-qualifying payments, and is unlikely to
+   * be approved for private refinancing until it's resolved. Getting this
+   * wrong in either direction is real harm -- showing normal strategies to
+   * someone in default is actively misleading, not just imprecise.
+   */
+  paymentStatus: 'current' | 'delinquent' | 'default';
 }
 
 interface LoanFormProps {
@@ -33,7 +58,8 @@ export const LoanForm: React.FC<LoanFormProps> = ({ onSubmit, onReset }) => {
   const loanTypeOptions: Array<{value: Loan['type']; label: string}> = [
     { value: 'Direct Subsidized', label: 'Direct Subsidized' },
     { value: 'Direct Unsubsidized', label: 'Direct Unsubsidized' },
-    { value: 'Direct PLUS', label: 'Direct PLUS' },
+    { value: 'Direct PLUS (Grad)', label: 'Direct PLUS (Grad)' },
+    { value: 'Direct PLUS (Parent)', label: 'Direct PLUS (Parent)' },
     { value: 'FFEL', label: 'FFEL' },
     { value: 'Perkins', label: 'Perkins' },
     { value: 'Private', label: 'Private' },
@@ -93,6 +119,11 @@ export const LoanForm: React.FC<LoanFormProps> = ({ onSubmit, onReset }) => {
           employmentSector,
           yearsInQualifyingRepayment: yearsInQualifyingRepayment ? Number(yearsInQualifyingRepayment) : undefined,
           creditScoreBand,
+          // This component is not rendered anywhere in app/ (see the module
+          // comment at the top of this file) and never gained a real control
+          // for this field; a fixed default keeps it typechecking without
+          // building UI nothing uses.
+          paymentStatus: 'current',
         }
       );
     } catch (err) {
