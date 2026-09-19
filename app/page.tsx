@@ -97,7 +97,6 @@ export default function Home() {
       {/* Footer */}
       <footer className="footer" role="contentinfo">
         <nav aria-label="Footer navigation">
-          <a href="/about">About</a>
           <button type="button" className="footer-link" onClick={() => setActiveModal('privacy')}>
             Privacy Policy
           </button>
