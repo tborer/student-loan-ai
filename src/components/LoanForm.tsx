@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import './components/loan-form.css';
+import './loan-form.css';
 
 export interface Loan {
   id?: string;
