@@ -96,7 +96,7 @@ const DetailedReport: React.FC<DetailedReportProps> = ({
               </div>
 
               <footer className="strategy-footer">
-                <a href={providerLinks[Object.keys(providerLinks).find(key => providerLinks[key] === strategy.providerLink) || '']} rel="noopener noreferrer" target="_blank" aria-label={`Go to ${strategy.title.toLowerCase()}`}>
+                <a href={strategy.providerLink} rel="noopener noreferrer" target="_blank" aria-label={`Go to ${strategy.title.toLowerCase()}`}>
                   {`→ Start ${strategy.title}`}
                 </a>
               </footer>

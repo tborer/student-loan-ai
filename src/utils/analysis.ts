@@ -19,7 +19,7 @@ interface RegulatoryConfig {
     tieredStandard: { terms: number[] };
   };
   rapBrackets: Array<{ agiPercentMin: number; agiPercentMax: number; paymentPercent: number }>;
-  idrPlans: Array<{ name: string; planMinPayment: number; discretionaryIncomeFormula: boolean }>;
+  idrPlans: Array<{ name: string; status: string; planMinPayment: number; discretionaryIncomeFormula: boolean }>;
 }
 
 /** Configuration loaded from providers.json */
@@ -32,7 +32,7 @@ interface AnalysisResult {
   eligibleStrategies: Array<{
     id: string;
     title: string;
-    savingsEstimate?: number;
+    savingsEstimate?: number | null;
     tradeoffs?: string[];
   }>;
   ineligibleFor: string[];
@@ -71,7 +71,7 @@ export const runAnalysis = (
     results.eligibleStrategies.push({
       id: 'refinance',
       title: 'Refinancing with Private Lender',
-      savingsEstimate: calculateRefinanceSavings(loan => loan.interestRate, borrower.creditScoreBand),
+      savingsEstimate: calculateRefinanceSavings(weightedAverageRate, borrower.creditScoreBand),
       tradeoffs: [
         'Converts federal loans to private (loses PSLF/IDR eligibility)',
         'Good for pure refinancing (no federal loans)'
@@ -156,7 +156,7 @@ export const runAnalysis = (
 };
 
 /** Calculate refinance savings estimate based on credit score tier */
-const calculateRefinanceSavings = (currentRate: number, creditScoreBand: string): number | null => {
+const calculateRefinanceSavings = (currentRate: number, creditScoreBand?: string): number | null => {
   const illustrativeRates: Record<string, number> = {
     '<650': 12.0,
     '650-699': 10.5,
@@ -164,7 +164,7 @@ const calculateRefinanceSavings = (currentRate: number, creditScoreBand: string)
     '750+': 6.5,
   };
 
-  const rate = illustrativeRates[creditScoreBand] || 10.0;
+  const rate = (creditScoreBand && illustrativeRates[creditScoreBand]) || 10.0;
   const gap = currentRate - rate;
   
   if (gap <= 0) return null; // No savings possible
@@ -177,7 +177,7 @@ const calculateRefinanceSavings = (currentRate: number, creditScoreBand: string)
 };
 
 /** Calculate IDR monthly payment estimate */
-const calculateIdrPayment = (borrower: BorrowerInfo, plan: { name: string }): number | null => {
+const calculateIdrPayment = (borrower: BorrowerInfo, plan: { name: string; planMinPayment: number }): number | null => {
   const povertyLines: Record<number, number> = {
     1: 16940, // single individual
     2: 20608, // size 2

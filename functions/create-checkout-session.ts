@@ -3,7 +3,7 @@ import Stripe from 'stripe';
 
 // Initialize Stripe with environment variables (Vercel deployment)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18',
+  apiVersion: '2025-02-24.acacia',
 });
 
 /**
@@ -34,7 +34,7 @@ export default async function handler(
     const idempotencyKey = req.headers['x-idempotency-key'] || `idem-${Date.now()}-${Math.random().toString(36).substring(2)}`;
 
     // Create a random session token (never PII per spec)
-    const sessionToken = `session-${Date.now()}-${Math.random().toString(36).substring(2)`;
+    const sessionToken = `session-${Date.now()}-${Math.random().toString(36).substring(2)}`;
 
     // Check idempotency - if same key used, return existing result (no double charge)
     // In production, check Redis/database here first

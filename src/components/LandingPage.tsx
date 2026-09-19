@@ -12,7 +12,7 @@ interface LandingPageProps {
   onContinue?: () => void;
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ onContinue }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onContinue }) => {
   const [email, setEmail] = useState<string>('');
 
   const features: FeatureCardProps[] = [

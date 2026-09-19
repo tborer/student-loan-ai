@@ -28,9 +28,9 @@ export const LoanForm: React.FC<LoanFormProps> = ({ onSubmit, onReset }) => {
   const [error, setError] = useState<string | null>(null);
 
   // Loan fields
-  const [loanTypes, setLoanTypes] = useState<string[]>(['Direct Subsidized']);
+  const [loanTypes, setLoanTypes] = useState<Loan['type'][]>(['Direct Subsidized']);
   
-  const loanTypeOptions: Array<{value: string; label: string}> = [
+  const loanTypeOptions: Array<{value: Loan['type']; label: string}> = [
     { value: 'Direct Subsidized', label: 'Direct Subsidized' },
     { value: 'Direct Unsubsidized', label: 'Direct Unsubsidized' },
     { value: 'Direct PLUS', label: 'Direct PLUS' },
@@ -48,7 +48,7 @@ export const LoanForm: React.FC<LoanFormProps> = ({ onSubmit, onReset }) => {
   const [yearsInQualifyingRepayment, setYearsInQualifyingRepayment] = useState<string>('');
   const [creditScoreBand, setCreditScoreBand] = useState<'<650' | '650-699' | '700-749' | '750+'>('<650');
 
-  const handleLoanTypeToggle = (type: string) => {
+  const handleLoanTypeToggle = (type: Loan['type']) => {
     if (loanTypes.includes(type)) {
       setLoanTypes(loanTypes.filter(t => t !== type));
     } else if (loanTypes.length < 10) {
@@ -56,7 +56,7 @@ export const LoanForm: React.FC<LoanFormProps> = ({ onSubmit, onReset }) => {
     }
   };
 
-  const handleRemoveLoanType = (type: string) => {
+  const handleRemoveLoanType = (type: Loan['type']) => {
     setLoanTypes(loanTypes.filter(t => t !== type));
   };
 
@@ -70,8 +70,9 @@ export const LoanForm: React.FC<LoanFormProps> = ({ onSubmit, onReset }) => {
       return;
     }
 
-    if (!annualIncome || annualIncome <= 0) {
-      setError('Annual gross income must be greater than $0.');
+    const parsedIncome = Number(annualIncome);
+    if (annualIncome.trim() === '' || Number.isNaN(parsedIncome) || parsedIncome < 0) {
+      setError('Annual gross income must be $0 or greater.');
       return;
     }
 
@@ -85,7 +86,7 @@ export const LoanForm: React.FC<LoanFormProps> = ({ onSubmit, onReset }) => {
       await onSubmit(
         loanTypes.map(type => ({ type, balance: 0, interestRate: 0 })), // Placeholder - would be filled from form fields
         {
-          annualIncome: Number(annualIncome),
+          annualIncome: parsedIncome,
           householdSize,
           filingStatus,
           stateOfResidence,
@@ -136,7 +137,7 @@ export const LoanForm: React.FC<LoanFormProps> = ({ onSubmit, onReset }) => {
         <input type="number" placeholder="Interest rate (%)" step="0.01" min="0" max="25" aria-label="Loan interest rate (0-25%)" />
         <select aria-label="Servicer (optional)">
           <option value="">Improves accuracy - leave blank if not sure</option>
-          <!-- More options -->
+          {/* More options */}
         </select>
       </div>
 

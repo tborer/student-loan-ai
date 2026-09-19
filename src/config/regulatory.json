@@ -71,6 +71,7 @@
   "idrPlans": [
     {
       "name": "IBR",
+      "status": "active",
       "planMinPayment": 25.0,
       "forgivenessTerm": {
         "standard": 20,
@@ -80,6 +81,7 @@
     },
     {
       "name": "RAP",
+      "status": "active",
       "planMinPayment": 10.0,
       "forgivenessTerm": null,
       "discretionaryIncomeFormula": false,

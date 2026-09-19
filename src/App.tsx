@@ -65,15 +65,16 @@ const App: React.FC = () => {
             />
 
             <DetailedReport 
-              strategies={[analysisResult.headlines.map((h: string, i: number) => ({
+              strategies={analysisResult.headlines.map((h: string, i: number) => ({
                 id: `strategy-${i}`,
                 title: h,
                 estimatedNewPayment: 300 - (i * 10),
-                monthlySavings: i > 0 ? null : 45,
+                monthlySavings: i > 0 ? undefined : 45,
                 tradeoffs: ['Consider eligibility requirements'],
-                actionChecklist: [{ step: 'Visit provider website', status: 'pending' }],
+                actionChecklist: [{ step: 'Visit provider website', status: 'pending' as const }],
                 providerLink: 'https://studentaid.gov',
-              })]}
+                onUnlock: () => Promise.resolve(),
+              }))}
               priceId="price_studentloan9"
               sessionToken="test-session-token"
             />
