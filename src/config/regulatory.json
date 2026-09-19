@@ -47,32 +47,60 @@
   "pslfRules": {
     "qualifiedEmployers": ["nonprofit", "government"],
     "qualifyingPlanRequirements": ["IBR", "RAP", "PAYE", "ICR", "SAVE (if active)"],
+    "qualifyingPayments": 120,
     "substantialIllegalPurposeRule": {
       "effectiveDate": "2026-07-01",
       "notes": "Excludes employers found to have substantial illegal purpose. Applied prospectively only."
     }
   },
 
-  "federalfPovertyGuidelines": {
-    "2025": {
-      "single": { "individual": 16940, "sfi": 24387, "mfj": 20828 },
-      "size_2": { "fpg": 20608 }
-    }
+  "povertyGuidelines": {
+    "year": 2026,
+    "region": "48 contiguous states and DC",
+    "household1": 15960,
+    "additionalPerson": 5680,
+    "note": "HHS annual poverty guidelines: household of 1, plus a flat amount per additional person. Sourced from secondary reporting; VERIFY against the Federal Register notice before launch, and refresh at each annual update.",
+    "verifyBeforeLaunch": true
   },
 
   "rapBrackets": [
-    { "agiPercentMin": 1.0, "agiPercentMax": 2.99, "paymentPercent": 1.5 },
-    { "agiPercentMin": 3.0, "agiPercentMax": 4.99, "paymentPercent": 2.0 },
-    { "agiPercentMin": 5.0, "agiPercentMax": 6.99, "paymentPercent": 3.5 },
-    { "agiPercentMin": 7.0, "agiPercentMax": 8.99, "paymentPercent": 4.5 },
-    { "agiPercentMin": 9.0, "agiPercentMax": 10.0, "paymentPercent": 7.0 }
+    { "agiUpTo": 10000, "paymentPercent": 0, "flatAnnualPayment": 120 },
+    { "agiUpTo": 20000, "paymentPercent": 1 },
+    { "agiUpTo": 30000, "paymentPercent": 2 },
+    { "agiUpTo": 40000, "paymentPercent": 3 },
+    { "agiUpTo": 50000, "paymentPercent": 4 },
+    { "agiUpTo": 60000, "paymentPercent": 5 },
+    { "agiUpTo": 70000, "paymentPercent": 6 },
+    { "agiUpTo": 80000, "paymentPercent": 7 },
+    { "agiUpTo": 90000, "paymentPercent": 8 },
+    { "agiUpTo": 100000, "paymentPercent": 9 },
+    { "agiUpTo": null, "paymentPercent": 10 }
   ],
+
+  "rapRules": {
+    "minMonthlyPayment": 10,
+    "perDependentMonthlyReduction": 50,
+    "unpaidInterestWaived": true,
+    "principalMatchCap": 50,
+    "note": "11 brackets stepping 1%-10% of AGI, one point per $10k, capped above $100k. perDependentMonthlyReduction lowers the bill itself; principalMatchCap is a separate mechanic -- RAP credits up to $50/month of principal reduction even when the payment does not cover it, which is what lets a low RAP payment still amortize instead of growing forever. Both happen to be $50; they are not the same $50. Sourced from secondary reporting on P.L. 119-21; VERIFY against the statute before launch.",
+    "verifyBeforeLaunch": true
+  },
+
+  "forgivenessTaxTreatment": {
+    "IBR": { "taxableFederal": true },
+    "RAP": { "taxableFederal": true },
+    "PSLF": { "taxableFederal": false },
+    "note": "Federal treatment only; state conformity varies and is not modeled. The temporary federal exclusion for discharged student debt expired at the end of 2025, so IDR forgiveness (IBR, RAP) is treated as taxable federal income in the year of discharge. PSLF forgiveness has its own separate, longstanding statutory exclusion (not the expired pandemic-era one) and remains tax-free. This is a live legislative area -- VERIFY before launch.",
+    "verifyBeforeLaunch": true
+  },
 
   "idrPlans": [
     {
       "name": "IBR",
       "status": "active",
-      "planMinPayment": 25.0,
+      "planMinPayment": 0,
+      "discretionaryIncomeMultiplier": 1.5,
+      "paymentPercent": 15,
       "forgivenessTerm": {
         "standard": 20,
         "extended": 25
@@ -83,9 +111,9 @@
       "name": "RAP",
       "status": "active",
       "planMinPayment": 10.0,
-      "forgivenessTerm": null,
+      "forgivenessTerm": 30,
       "discretionaryIncomeFormula": false,
-      "note": "Uses AGI-based bracket lookup instead"
+      "note": "Uses AGI-based bracket lookup instead. Forgives at 360 qualifying payments (30 years)."
     }
   ]
 }
