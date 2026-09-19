@@ -27,7 +27,7 @@ coverage
 *.sln
 *.sw?
 
-# Old files from migration
-src/
+# Old files from migration (src/ is NOT listed here on purpose: tsconfig
+# compiles it, and app/ is expected to import its components)
 vite.config.ts
 tsconfig.node.json
