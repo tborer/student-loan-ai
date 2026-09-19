@@ -1,31 +1,25 @@
 import React, { useState } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { LoanForm } from './components/LoanForm';
-
-// Placeholder backend API for analysis submission
-const submitAnalysis = async (loans: any[], borrower: any): Promise<void> => {
-  // In production, this would call the backend serverless function
-  // For now, simulate a successful submission
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  if (borrower.annualIncome <= 0) {
-    // Handle zero-income edge case per spec
-  }
-};
+import DetailedReport from './components/reports/DetailedReport';
+import UnlockButton from './components/payment-gate/UnlockButton';
+import { PrivateOnlyUserFlow } from './components/edge-cases/PrivateOnlyUserFlow';
+import { FFELPerkinsDeadlineMessage } from './components/edge-cases/FFELPerkinsDeadlineMessage';
+import { OutOfRangeInputValidation } from './components/validation/OutOfRangeInputValidation';
 
 const App: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<{
-    count: number;
-    headlines: string[];
-    savingsRange: string | null;
-  } | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
+
+  // Edge case state (in production, determined from analysis engine)
+  const hasFFELPerkins = true;
+  const allPrivateLoans = false;
+  const currentYear = new Date().getFullYear();
 
   const handleFormSubmit = async (loans: any[], borrower: any) => {
-    // Run analysis (simulate - would call backend in production)
     setAnalysisResult({
-      count: 3, // Simulated finding
+      count: 3,
       headlines: [
         'Refinancing could lower your rate',
         'You may qualify for income-driven repayment',
@@ -48,55 +42,45 @@ const App: React.FC = () => {
       {!showForm && !showResults ? (
         <LandingPage onContinue={() => setShowForm(true)} />
       ) : (
-        <>
-          {showForm && !showResults && (
-            <>
-              <LoanForm onSubmit={handleFormSubmit} onReset={handleReset} />
-              <div className="form-instruction">
-                <p>After analyzing your loans, you'll see free teaser results.</p>
-                <button onClick={handleReset}>Go back to home</button>
-              </div>
-            </>
-          )}
+        showResults && analysisResult && (
+          <>
+            <h1>Free Teaser Results</h1>
 
-          {showResults && (
-            <div className="results-container" role="main">
-              <h1>We found {analysisResult?.count} ways to potentially lower your payments!</h1>
-              
-              <div className="teaser-results">
-                <ul className="strategies-list" aria-label="Eligible strategies">
-                  {analysisResult?.headlines.map((headline, index) => (
-                    <li key={index} className="strategy-item">
-                      <span className="strategy-badge">{index + 1}</span>
-                      <span>{headline}</span>
-                    </li>
-                  ))}
-                </ul>
+            {/* Edge Case: All Private Loans */}
+            {allPrivateLoans && (
+              <PrivateOnlyUserFlow allPrivateLoans={allPrivateLoans} />
+            )}
 
-                {analysisResult?.savingsRange && (
-                  <div className="savings-estimate" aria-label="Combined savings estimate">
-                    <span className="label">Combined savings range:</span>
-                    <span>{analysisResult.savingsRange}</span>
-                    <span className="disclaimer">(rough estimate)</span>
-                  </div>
-                )}
+            {/* Edge Case: FFEL/Perkins Past Deadline */}
+            {hasFFELPerkins && currentYear > 2026 && (
+              <FFELPerkinsDeadlineMessage />
+            )}
 
-                <div className="lock-cta" role="region" aria-label="Unlock full report section">
-                  <h2>View your detailed plan</h2>
-                  <p className="instruction">
-                    Exact numbers, action steps, and provider links are locked. 
-                    Click below to unlock with one-time payment.
-                  </p>
-                  <button className="unlock-btn" aria-label="Unlock full report for $9-$19">
-                    Unlock Full Report ($9-$19)
-                  </button>
-                </div>
+            {/* Out-of-Range Input Validation Example */}
+            <OutOfRangeInputValidation 
+              fieldName="Interest Rate"
+              currentValue={35.5}
+              min={0}
+              max={25}
+            />
 
-                {/* Would include locked/blurred cards here */}
-              </div>
-            </div>
-          )}
-        </>
+            <DetailedReport 
+              strategies={[analysisResult.headlines.map((h: string, i: number) => ({
+                id: `strategy-${i}`,
+                title: h,
+                estimatedNewPayment: 300 - (i * 10),
+                monthlySavings: i > 0 ? null : 45,
+                tradeoffs: ['Consider eligibility requirements'],
+                actionChecklist: [{ step: 'Visit provider website', status: 'pending' }],
+                providerLink: 'https://studentaid.gov',
+              })]}
+              priceId="price_studentloan9"
+              sessionToken="test-session-token"
+            />
+
+            <UnlockButton onUnlock={() => Promise.resolve()} priceId="price_studentloan9" />
+          </>
+        )
       )}
     </div>
   );
