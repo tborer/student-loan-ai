@@ -7,10 +7,16 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Node modules
 node_modules
-dist
-dist-ssr
-*.local
+.pnp
+.pnp.js
+
+# Build output
+build/
+dist/
+.next/
+out/
 
 # Editor directories and files
 .vscode/*
@@ -23,22 +29,19 @@ dist-ssr
 *.sln
 *.sw?
 
-# Environment variables
+# Environment variables (commit template only)
 .env
 .env.local
 .env.*.local
 
-# Build output
-build/
-coverage/
-
 # TypeScript cache
 .tsbuildinfo
 
-# Package manager lock files (optional)
+# Vercel deployment files
+.vercel/
+.vercelignore
+
+# Package manager lock files (optional, commit for reproducible builds)
 package-lock.json
 yarn.lock
-
-# Temporary files
-*.tmp
-*.temp
+pnpm-lock.yaml
