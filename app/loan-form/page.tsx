@@ -276,7 +276,11 @@ export default function LoanFormPage() {
                   </div>
 
                   {loans.length > 1 && (
-                    <button type="button" onClick={() => removeLoan(loan.id)}>
+                    <button
+                      type="button"
+                      className="btn-remove-loan"
+                      onClick={() => removeLoan(loan.id)}
+                    >
                       Remove Loan #{index + 1}
                     </button>
                   )}
@@ -284,7 +288,11 @@ export default function LoanFormPage() {
               ))}
             </div>
 
-            <button type="button" onClick={() => setLoans((c) => [...c, blankLoan()])}>
+            <button
+              type="button"
+              className="btn-add-loan"
+              onClick={() => setLoans((c) => [...c, blankLoan()])}
+            >
               + Add Another Loan
             </button>
           </section>
