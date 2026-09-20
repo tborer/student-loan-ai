@@ -3,38 +3,70 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { AnalysisResult } from '@/utils/analysis';
-import { loadAnalysis } from '../lib/analysis-session';
+import { loadAnalysis, markAnalysisPaid } from '../lib/analysis-session';
+
+const formatCurrency = (amount: number): string =>
+  `$${Math.round(amount).toLocaleString('en-US')}`;
 
 export default function ResultsPage() {
   const router = useRouter();
 
   const [sessionToken, setSessionToken] = useState('');
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
 
-    if (params.get('checkout') === 'cancelled') {
-      setNotice('Checkout was cancelled. Your results are still here whenever you are ready.');
-    } else if (params.get('session_id')) {
-      // The redirect alone never unlocks anything; the webhook is the source
-      // of truth. Until the ephemeral store lands, say so plainly rather than
-      // implying the report is ready.
-      setNotice(
-        'Payment received. Report delivery is not enabled yet -- please contact support with your receipt.'
-      );
-    }
-
     const stored = loadAnalysis();
     if (stored) {
       setSessionToken(stored.token);
       setResult(stored.result);
+      setIsUnlocked(Boolean(stored.paid));
     }
     setIsLoaded(true);
+
+    if (params.get('checkout') === 'cancelled') {
+      setNotice('Checkout was cancelled. Your results are still here whenever you are ready.');
+      return;
+    }
+
+    const checkoutSessionId = params.get('session_id');
+    if (!checkoutSessionId) return;
+
+    // The redirect alone never unlocks anything -- Stripe's own record of the
+    // session is the source of truth, so ask it directly rather than trust
+    // the URL.
+    setIsVerifying(true);
+    setNotice('Confirming your payment...');
+
+    fetch(`/api/verify-payment?session_id=${encodeURIComponent(checkoutSessionId)}`)
+      .then((response) => response.json())
+      .then((data: { paid?: boolean; sessionToken?: string | null; reason?: string }) => {
+        if (data.paid && data.sessionToken && stored && data.sessionToken === stored.token) {
+          markAnalysisPaid(data.sessionToken);
+          setIsUnlocked(true);
+          setNotice(null);
+        } else if (data.reason === 'refunded') {
+          setNotice('This report was refunded, so it is no longer unlocked.');
+        } else {
+          setNotice(
+            "We could not confirm this payment yet. If you just paid, this can take a few seconds -- refresh the page. If it still doesn't unlock, contact support with your receipt."
+          );
+        }
+      })
+      .catch((err) => {
+        console.error('Payment verification failed:', err);
+        setNotice(
+          'We could not confirm this payment right now. Refresh the page, or contact support with your receipt.'
+        );
+      })
+      .finally(() => setIsVerifying(false));
   }, []);
 
   const handleUnlock = async () => {
@@ -103,7 +135,7 @@ export default function ResultsPage() {
 
       <div className="container">
         <header>
-          <h1>Free Teaser Results</h1>
+          <h1>{isUnlocked ? 'Your Full Repayment Plan' : 'Free Teaser Results'}</h1>
           {isLoaded && (
             <p>
               We found <strong>{strategies.length}</strong>{' '}
@@ -126,7 +158,10 @@ export default function ResultsPage() {
         {/*
           Free tier shows headlines only. Exact figures are deliberately not
           rendered here -- keeping them out of the DOM entirely, rather than
-          hiding them with CSS, is what actually protects the paywall.
+          hiding them with CSS, is what actually protects the paywall. Once
+          isUnlocked is true (confirmed via /api/verify-payment, never from
+          the URL alone), the same strategies array already sitting in
+          sessionStorage carries the real numbers -- nothing is re-fetched.
 
           riskWarnings is the one exception: it carries no dollar figure, only
           eligibility- and risk-critical text (e.g. "refinancing forfeits
@@ -148,9 +183,62 @@ export default function ResultsPage() {
                 ))}
               </ul>
             )}
-            <p className="disclaimer">
-              Exact numbers, trade-offs and next steps are in the full report.
-            </p>
+
+            {isUnlocked ? (
+              <>
+                {(strategy.estimatedMonthlyPayment !== undefined ||
+                  strategy.estimatedAnnualSavings !== undefined) && (
+                  <div className="strategy-metrics" aria-label={`Estimated figures for ${strategy.title}`}>
+                    {strategy.estimatedMonthlyPayment !== undefined && (
+                      <div className="metric">
+                        <span className="metric-label">Estimated monthly payment</span>
+                        <strong>{formatCurrency(strategy.estimatedMonthlyPayment)}</strong>
+                      </div>
+                    )}
+                    {strategy.estimatedAnnualSavings !== undefined && (
+                      <div className="metric">
+                        <span className="metric-label">Estimated savings</span>
+                        <strong>{formatCurrency(strategy.estimatedAnnualSavings)}/year</strong>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {strategy.tradeoffs && strategy.tradeoffs.length > 0 && (
+                  <div className="tradeoffs">
+                    <h4>Considerations</h4>
+                    <ul>
+                      {strategy.tradeoffs.map((tradeoff) => (
+                        <li key={tradeoff}>{tradeoff}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {strategy.warnings && strategy.warnings.length > 0 && (
+                  <ul className="risk-warnings" aria-label={`Cost details for ${strategy.title}`}>
+                    {strategy.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                )}
+
+                {strategy.actionUrl && (
+                  <div className="strategy-action">
+                    <a href={strategy.actionUrl} target="_blank" rel="noopener noreferrer">
+                      {strategy.actionUrlLabel || `Start ${strategy.title}`} →
+                    </a>
+                    {strategy.actionDisclosure && (
+                      <p className="action-disclosure">{strategy.actionDisclosure}</p>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="disclaimer">
+                Exact numbers, trade-offs and next steps are in the full report.
+              </p>
+            )}
           </article>
         ))}
 
@@ -183,7 +271,7 @@ export default function ResultsPage() {
           </section>
         )}
 
-        {strategies.length > 0 && (
+        {strategies.length > 0 && !isUnlocked && (
           <section className="unlock-cta" aria-labelledby="unlock-heading">
             <h2 id="unlock-heading">View Your Detailed Plan</h2>
             <p>
@@ -197,9 +285,20 @@ export default function ResultsPage() {
               studentaid.gov doesn&apos;t provide.
             </p>
 
-            <button onClick={handleUnlock} disabled={isProcessing} className="btn-primary">
+            <button onClick={handleUnlock} disabled={isProcessing || isVerifying} className="btn-primary">
               {isProcessing ? 'Processing...' : 'Unlock Full Report'}
             </button>
+          </section>
+        )}
+
+        {isUnlocked && (
+          <section className="unlock-cta unlocked" aria-label="Report unlocked">
+            <h2>Report Unlocked</h2>
+            <p>
+              Everything above now includes your estimated numbers and direct links to start each
+              option. Use your browser&apos;s print or save-as-PDF to keep a copy -- this page is
+              tied to this browser tab and is not stored on our servers.
+            </p>
           </section>
         )}
 

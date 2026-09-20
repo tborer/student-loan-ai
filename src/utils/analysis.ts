@@ -69,6 +69,12 @@ export interface RegulatoryConfig {
 export interface ProviderConfig {
   refinanceLenders: Array<{ name: string; url: string; creditTierMin?: string }>;
   federalPortals: Array<{ name: string; url: string; type: string }>;
+  comparisonSites: Array<{
+    name: string;
+    url: string;
+    affiliate?: boolean;
+    disclosure?: string;
+  }>;
 }
 
 /**
@@ -122,6 +128,16 @@ export interface Strategy {
    * irreversible-risk warning behind a paywall protects the wrong thing.
    */
   riskWarnings?: string[];
+  /**
+   * Where to actually start this strategy -- a federal portal for
+   * idr/consolidation/pslf, or a neutral multi-lender comparison site for
+   * refinance (never a single lender, so this never picks a "winner").
+   * Paywalled with the rest of the strategy's numbers, like the card itself.
+   */
+  actionUrl?: string;
+  actionUrlLabel?: string;
+  /** FTC-required affiliate disclosure for actionUrl, when it applies. */
+  actionDisclosure?: string;
 }
 
 export interface AnalysisResult {
@@ -435,6 +451,8 @@ export const runAnalysis = (
     baselineLifetimeCost: Math.round(baselineLifetimeCost),
   };
 
+  const portalFor = (type: string) => config.federalPortals.find((p) => p.type === type)?.url;
+
   // Discharge candidacy is checked first and unconditionally -- including
   // for a borrower in default, where it matters most: Total and Permanent
   // Disability Discharge or Closed School Discharge can be the actual way
@@ -447,7 +465,6 @@ export const runAnalysis = (
   if (borrower.possibleDischarge) {
     const { disability, closedSchool, borrowerDefense } = borrower.possibleDischarge;
     const dischargeMessages: string[] = [];
-    const portalFor = (type: string) => config.federalPortals.find((p) => p.type === type)?.url;
 
     if (disability) {
       const url = portalFor('disability_discharge');
@@ -584,6 +601,15 @@ export const runAnalysis = (
     refinance.tradeoffs?.push('Add a credit score band for a sharper rate estimate');
   }
 
+  // A comparison site, never a single lender -- this is a multi-lender
+  // shopping tool, not a recommendation of one lender over another.
+  const refinanceComparison = config.comparisonSites[0];
+  if (refinanceComparison) {
+    refinance.actionUrl = refinanceComparison.url;
+    refinance.actionUrlLabel = `Compare offers at ${refinanceComparison.name}`;
+    if (refinanceComparison.disclosure) refinance.actionDisclosure = refinanceComparison.disclosure;
+  }
+
   if (hasFederalLoans) {
     refinanceRiskWarnings.push(
       'Refinancing a federal loan converts it to private debt and permanently forfeits IDR, RAP, PSLF, deferment and forgiveness eligibility. This cannot be undone.'
@@ -656,6 +682,8 @@ export const runAnalysis = (
         (w): w is string => w !== null
       );
 
+      const idrPortal = portalFor('federal_idr');
+
       const strategy: Strategy = {
         id: `idr_${plan.name.toLowerCase()}`,
         title: `Income-Driven Repayment (${plan.name})`,
@@ -664,6 +692,7 @@ export const runAnalysis = (
         lifetimeCost,
         tradeoffs,
         ...(warnings.length > 0 ? { warnings } : {}),
+        ...(idrPortal ? { actionUrl: idrPortal, actionUrlLabel: 'Apply on studentaid.gov' } : {}),
       };
 
       if (parentPlusLoans.length > 0) {
@@ -687,6 +716,10 @@ export const runAnalysis = (
   if (nonDirectFederalLoans.length > 0) {
     const affected = nonDirectFederalLoans.map((l) => l.type).join(', ');
     const newRate = calculateConsolidationRate(loans);
+    const consolidationPortal = portalFor('consolidation');
+    const consolidationAction = consolidationPortal
+      ? { actionUrl: consolidationPortal, actionUrlLabel: 'Consolidate on studentaid.gov' }
+      : {};
 
     if (pastConsolidationDeadline) {
       results.eligibleStrategies.push({
@@ -700,6 +733,7 @@ export const runAnalysis = (
         riskWarnings: [
           `The deadline to consolidate ${affected} loans while preserving IDR and PSLF eligibility passed on ${config.consolidationDeadline.historicalDeadline}. Those loans have permanently lost that eligibility, and consolidating now will not restore it.`,
         ],
+        ...consolidationAction,
       });
 
       results.ineligibleFor.push(
@@ -717,6 +751,7 @@ export const runAnalysis = (
           `Consolidating your ${affected} loans into a Direct Consolidation Loan is a prerequisite for IDR and PSLF, and the deadline to do so while preserving that eligibility is ${config.consolidationDeadline.historicalDeadline}.`,
           'Consolidation produces a weighted average of any PSLF qualifying-payment counts on the loans involved -- it does not preserve the highest count. Confirm your counts on studentaid.gov before consolidating if you are close to 120 payments.',
         ],
+        ...consolidationAction,
       });
 
       results.recommendations.push(
@@ -745,6 +780,12 @@ export const runAnalysis = (
     }
 
     const strategy: Strategy = { id: 'pslf', title: 'Public Service Loan Forgiveness (PSLF)', tradeoffs };
+
+    const pslfPortal = portalFor('pslf');
+    if (pslfPortal) {
+      strategy.actionUrl = pslfPortal;
+      strategy.actionUrlLabel = 'Start the PSLF Help Tool';
+    }
 
     if (parentPlusLoans.length > 0) {
       strategy.riskWarnings = [
