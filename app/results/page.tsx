@@ -19,6 +19,14 @@ export default function ResultsPage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [stripeEnabled, setStripeEnabled] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then((res) => res.json())
+      .then((data: { enableStripe?: boolean }) => setStripeEnabled(data.enableStripe !== false))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -70,7 +78,7 @@ export default function ResultsPage() {
   }, []);
 
   const handleUnlock = async () => {
-    if (!sessionToken) return;
+    if (!sessionToken || !stripeEnabled) return;
 
     setIsProcessing(true);
     setError(null);
@@ -285,9 +293,15 @@ export default function ResultsPage() {
               studentaid.gov doesn&apos;t provide.
             </p>
 
-            <button onClick={handleUnlock} disabled={isProcessing || isVerifying} className="btn-primary">
-              {isProcessing ? 'Processing...' : 'Unlock Full Report'}
-            </button>
+            {stripeEnabled ? (
+              <button onClick={handleUnlock} disabled={isProcessing || isVerifying} className="btn-primary">
+                {isProcessing ? 'Processing...' : 'Unlock Full Report'}
+              </button>
+            ) : (
+              <div className="notice-banner" role="status">
+                <p>Payments aren&apos;t open yet -- check back soon to unlock your full report.</p>
+              </div>
+            )}
           </section>
         )}
 

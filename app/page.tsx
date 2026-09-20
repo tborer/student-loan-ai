@@ -1,21 +1,40 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Modal from './components/Modal';
 import ContactForm from './components/ContactForm';
+import WaitlistForm from './components/WaitlistForm';
 import PrivacyPolicy from '@/components/terms-and-privacy/PrivacyPolicy';
 import TermsOfService from '@/components/terms-and-privacy/TermsOfService';
 
-type FooterModal = 'privacy' | 'terms' | 'contact' | null;
+type ActiveModal = 'privacy' | 'terms' | 'contact' | 'waitlist' | null;
 
 export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState<string>('');
-  const [activeModal, setActiveModal] = useState<FooterModal>(null);
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
+  const [enableWaitlist, setEnableWaitlist] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then((res) => res.json())
+      .then((data: { enableWaitlist?: boolean }) => setEnableWaitlist(data.enableWaitlist !== false))
+      .catch(() => {});
+  }, []);
 
   return (
     <main className="home">
+      {enableWaitlist && (
+        <div className="waitlist-bar">
+          <div className="container">
+            <button type="button" className="btn-secondary" onClick={() => setActiveModal('waitlist')}>
+              Join the Waitlist
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
       <section className="hero" aria-labelledby="hero-heading">
         <div className="container">
@@ -132,6 +151,12 @@ export default function Home() {
       {activeModal === 'contact' && (
         <Modal titleId="contact-modal-title" title="Contact Us" onClose={() => setActiveModal(null)}>
           <ContactForm />
+        </Modal>
+      )}
+
+      {activeModal === 'waitlist' && (
+        <Modal titleId="waitlist-modal-title" title="Join the Waitlist" onClose={() => setActiveModal(null)}>
+          <WaitlistForm />
         </Modal>
       )}
     </main>

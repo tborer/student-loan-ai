@@ -15,6 +15,10 @@ const STRIPE_API_VERSION = '2025-02-24.acacia' as const;
  * client-supplied price could be swapped for any other price in the account.
  */
 export async function POST(req: NextRequest) {
+  if (process.env.ENABLE_STRIPE === 'false') {
+    return NextResponse.json({ error: 'Payments are not available right now.' }, { status: 503 });
+  }
+
   const priceId = process.env.STRIPE_PRICE_ID;
   const clientUrl = process.env.CLIENT_URL;
 
