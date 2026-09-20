@@ -121,6 +121,13 @@ input:focus, select:focus {
   padding-bottom: var(--spacing-xl);
 }
 
+/* Waitlist bar -- sits above the hero, only rendered when ENABLE_WAITLIST
+   (via /api/config) allows it. */
+.waitlist-bar {
+  padding: var(--spacing-sm) 0;
+  text-align: right;
+}
+
 /* Hero Section */
 .hero {
   padding: var(--spacing-xl) 0;
