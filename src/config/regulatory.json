@@ -44,6 +44,27 @@
     "currentStatus": "past_deadline"
   },
 
+  "timeSensitiveNotices": {
+    "autopayDiscount": {
+      "standardDiscountPercent": 0.25,
+      "boostedDiscountPercent": 1.0,
+      "boostEffectiveDate": "2026-07-01",
+      "enrollByDate": "2026-09-30",
+      "boostExpiresDate": "2028-06-30",
+      "eligibilityNote": "Direct Loans first disbursed on or after 2012-07-01. Not collected on the form, so shown to any federal-loan holder with an appropriate caveat rather than asserted as certain.",
+      "note": "Raised from the longstanding 0.25% to 1%, temporarily. Applies regardless of repayment strategy chosen -- no eligibility analysis, no trade-off, does not compete with the ranked strategies. Sourced from ed.gov/NASFAA reporting; VERIFY before launch.",
+      "verifyBeforeLaunch": true
+    },
+    "saveTransition": {
+      "noticeWaveStart": "2026-07-01",
+      "responseWindowDays": 90,
+      "firstWaveDeadlineExample": "2026-09-29",
+      "lastWaveDeadlineExample": "2027-03-31",
+      "note": "Not a single universal deadline -- each borrower gets a 90-day window starting when their servicer's individual notice goes out, in waves from mid-2026 through early 2027. Missing the window moves the borrower to Standard/Tiered Standard automatically. Time in SAVE forbearance earns no PSLF/IDR credit. Sourced from secondary reporting; VERIFY before launch.",
+      "verifyBeforeLaunch": true
+    }
+  },
+
   "pslfRules": {
     "qualifiedEmployers": ["nonprofit", "government"],
     "qualifyingPlanRequirements": ["IBR", "RAP", "PAYE", "ICR", "SAVE (if active)"],

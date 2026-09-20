@@ -52,9 +52,9 @@ export async function POST(req: NextRequest) {
         console.log(
           `[stripe] payment confirmed session=${session.id} ref=${session.client_reference_id}`
         );
-        // TODO(ephemeral-store): mark this sessionToken as paid, TTL-bound,
-        // so /results can unlock the detailed report. Until that store
-        // exists, payment is recorded but nothing is unlocked server-side.
+        // No store to write here: /api/verify-payment asks Stripe directly
+        // (by session_id, from the success redirect) when /results needs to
+        // know whether a session paid, so this log is audit-only.
       }
       break;
     }
@@ -67,7 +67,10 @@ export async function POST(req: NextRequest) {
     case 'charge.refunded': {
       const charge = event.data.object;
       console.log(`[stripe] refund issued charge=${charge.id} amount=${charge.amount}`);
-      // TODO(ephemeral-store): revoke report access for the related session.
+      // No revocation needed here either: /api/verify-payment checks the
+      // charge's refunded status live on every visit, so a refund takes
+      // effect on the borrower's next page load without this handler
+      // having to do anything. This log is audit-only.
       break;
     }
 

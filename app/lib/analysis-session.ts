@@ -9,6 +9,15 @@ export interface StoredAnalysis {
   token: string;
   createdAt: number;
   result: AnalysisResult;
+  /**
+   * Set locally only after /api/verify-payment confirms this token's Stripe
+   * Checkout Session actually paid. This is a convenience so a same-tab
+   * revisit (no session_id in the URL) still shows the unlocked report --
+   * it is never itself the proof of payment, since a visitor could set it by
+   * hand, but doing so would only unlock numbers already sitting unencrypted
+   * in this same record. See results/page.tsx.
+   */
+  paid?: boolean;
 }
 
 /**
@@ -64,6 +73,25 @@ export function loadAnalysis(): StoredAnalysis | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Marks the stored analysis as paid, but only if its token matches --
+ * verify-payment's response is never trusted to unlock whatever happens to
+ * be in storage, only the specific analysis it was issued for.
+ */
+export function markAnalysisPaid(token: string): StoredAnalysis | null {
+  const stored = loadAnalysis();
+  if (!stored || stored.token !== token) return null;
+
+  const updated: StoredAnalysis = { ...stored, paid: true };
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  } catch {
+    // Storage unavailable: the caller still gets the updated record back for
+    // this render, it just will not survive a reload.
+  }
+  return updated;
 }
 
 export function clearAnalysis(): void {

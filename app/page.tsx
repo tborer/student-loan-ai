@@ -74,7 +74,11 @@ export default function Home() {
             <article className="feature-card">
               <span aria-hidden="true">💰</span>
               <h3>Transparent Pricing</h3>
-              <p>One-time fee for your analysis — no subscriptions, no hidden costs.</p>
+              <p>
+                One-time fee for your analysis — no subscriptions, no hidden costs. Enrolling in
+                IDR, consolidating, and applying for PSLF are always free directly through
+                studentaid.gov; you&apos;re paying us for the comparison, not the filing.
+              </p>
             </article>
 
             <article className="feature-card">

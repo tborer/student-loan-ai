@@ -93,6 +93,7 @@
 
 .contact-form input,
 .contact-form textarea {
+  width: 100%;
   padding: var(--spacing-sm);
   border: 1px solid #d1d5db;
   border-radius: var(--border-radius);
